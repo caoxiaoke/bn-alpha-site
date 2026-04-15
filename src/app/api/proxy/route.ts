@@ -36,23 +36,11 @@ export async function GET(request: NextRequest) {
   const ALPHA_LIST_URL = 'https://www.binance.com/bapi/defi/v1/public/wallet-direct/buw/wallet/cex/alpha/all/token/list';
   const ALPHA_TICKER_URL = 'https://www.binance.com/bapi/defi/v1/public/alpha-trade/ticker';
   const ALPHA_KLINES_URL = 'https://www.binance.com/bapi/defi/v1/public/alpha-trade/klines';
-  const FAPI_EXCHANGE_INFO_URLS = [
-    'https://fapi.binance.com/fapi/v1/exchangeInfo',
-    'https://www.binance.com/fapi/v1/exchangeInfo',
-  ];
-  const FUNDING_INFO_URLS = [
-    'https://fapi.binance.com/fapi/v1/fundingInfo',
-    'https://www.binance.com/fapi/v1/fundingInfo',
-  ];
+  const FAPI_EXCHANGE_INFO_URLS = ['https://fapi.binance.com/fapi/v1/exchangeInfo'];
+  const FUNDING_INFO_URLS = ['https://fapi.binance.com/fapi/v1/fundingInfo'];
   const TICKER_URL = 'https://api.binance.com/api/v3/ticker/24hr';
-  const OI_URLS = [
-    'https://fapi.binance.com/fapi/v1/openInterest',
-    'https://www.binance.com/fapi/v1/openInterest',
-  ];
-  const OI_HIST_URLS = [
-    'https://fapi.binance.com/fapi/v1/openInterestHist',
-    'https://www.binance.com/fapi/v1/openInterestHist',
-  ];
+  const OI_URLS = ['https://fapi.binance.com/fapi/v1/openInterest'];
+  const OI_HIST_URLS = ['https://fapi.binance.com/fapi/v1/openInterestHist'];
 
   try {
     let urls: string[] = [];
@@ -101,6 +89,18 @@ export async function GET(request: NextRequest) {
     const { response, url } = await fetchWithFallback(urls);
     return NextResponse.json({ ...response.data, _sourceUrl: url });
   } catch (error: any) {
+    const upstreamStatus = error?.response?.status ?? null;
+    if ((target === 'oi' || target === 'oiHist') && upstreamStatus === 451) {
+      return NextResponse.json(
+        {
+          code: 'RESTRICTED',
+          message: 'UPSTREAM_RESTRICTED',
+          data: target === 'oi' ? null : [],
+          _sourceUrl: String(error?.config?.url ?? ''),
+        },
+        { status: 200 }
+      );
+    }
     const details = {
       message: String(error?.message ?? ''),
       code: String(error?.code ?? ''),

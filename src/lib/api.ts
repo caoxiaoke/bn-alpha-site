@@ -130,6 +130,7 @@ export const fetchTokenOI = async (symbol: string) => {
   try {
     const usdtSymbol = `${symbol}USDT`;
     const res = await axios.get(`${PROXY_BASE}?target=oi&symbol=${usdtSymbol}`);
+    if (res.data?.code === 'RESTRICTED') return null;
     return parseFloat(res.data.openInterest);
   } catch (error) {
     console.error(`Error fetching OI for ${symbol} via proxy:`, error);
@@ -141,6 +142,7 @@ export const fetchOIHistory = async (symbol: string): Promise<number[]> => {
   try {
     const usdtSymbol = `${symbol}USDT`;
     const res = await axios.get(`${PROXY_BASE}?target=oiHist&symbol=${usdtSymbol}`);
+    if (res.data?.code === 'RESTRICTED') return [];
     return res.data.map((h: any) => parseFloat(h.sumOpenInterest));
   } catch (error) {
     console.error(`Error fetching OI history for ${symbol} via proxy:`, error);
