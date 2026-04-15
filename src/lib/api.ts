@@ -47,10 +47,6 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
       fundingOk = false;
     }
 
-    if (!fundingOk && !perpOk) {
-      throw new Error('PERP_CHECK_UNAVAILABLE');
-    }
-
     const tokens = (alphaData as any[])
       .filter((item) => String(item?.chainName ?? '') === 'BSC' || String(item?.chainId ?? '') === '56')
       .map((item) => {
@@ -58,7 +54,9 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
         const futuresSymbol = `${symbol}USDT`.toUpperCase();
 
         const isPerpAvailable =
-          (fundingOk && fundingMap.has(futuresSymbol)) || (perpSet.size > 0 && perpSet.has(futuresSymbol));
+          (fundingOk && fundingMap.has(futuresSymbol)) ||
+          (perpSet.size > 0 && perpSet.has(futuresSymbol)) ||
+          (!fundingOk && !perpOk);
         const fundingRate = fundingOk ? Number(fundingMap.get(futuresSymbol)) || 0 : 0;
 
         const price = parseNumber(item?.price);
@@ -111,7 +109,9 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
         if (!t.symbol) return false;
         if (!(t.marketCap > 0)) return false;
         if (!(t.marketCap > 10000000 && t.marketCap < 80000000)) return false;
-        if (!t.isPerpAvailable) return false;
+        if (fundingOk || perpOk) {
+          if (!t.isPerpAvailable) return false;
+        }
         const hasContractAddress = Boolean((t as any)._hasContractAddress);
         const stockState = Boolean((t as any)._stockState);
         if (!hasContractAddress) return false;
