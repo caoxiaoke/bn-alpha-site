@@ -3,13 +3,80 @@ import { Token } from '@/types';
 
 const PROXY_BASE = '/api/proxy';
 
+type HolderLike = {
+  address?: string;
+  walletAddress?: string;
+  ownerAddress?: string;
+  label?: string;
+  tag?: string;
+  balance?: number | string;
+  amount?: number | string;
+  quantity?: number | string;
+};
+
+const EXCLUDED_HOLDER_ADDRESSES = new Set([
+  '0x0000000000000000000000000000000000000000',
+  '0x000000000000000000000000000000000000dead',
+]);
+
+const isExcludedHolder = (holder: HolderLike) => {
+  const addr = String(
+    holder.address ?? holder.walletAddress ?? holder.ownerAddress ?? ''
+  ).toLowerCase();
+  const label = String(holder.label ?? holder.tag ?? '').toLowerCase();
+  if (EXCLUDED_HOLDER_ADDRESSES.has(addr)) return true;
+  if (label.includes('binance') || label.includes('exchange') || label.includes('cex')) return true;
+  return false;
+};
+
+const parseNumber = (val: unknown) => {
+  const n = typeof val === 'number' ? val : parseFloat(String(val));
+  return Number.isFinite(n) ? n : 0;
+};
+
+const computeTop10Ratio = (item: any, totalSupply: number): number | undefined => {
+  const holderArrays = [item?.holders, item?.holderList, item?.topHolders].filter(Array.isArray);
+  for (const arr of holderArrays) {
+    const holders = (arr as HolderLike[])
+      .filter((h) => !isExcludedHolder(h))
+      .map((h) => parseNumber(h.balance ?? h.amount ?? h.quantity))
+      .filter((v) => v > 0)
+      .sort((a, b) => b - a);
+    if (!holders.length || totalSupply <= 0) continue;
+    const top10Total = holders.slice(0, 10).reduce((acc, v) => acc + v, 0);
+    return top10Total / totalSupply;
+  }
+
+  const top10Raw =
+    item?.top10Percentage ??
+    item?.top10HolderRatio ??
+    item?.top10HoldRatio ??
+    item?.top10HoldersRatio ??
+    item?.top10HolderPercent ??
+    item?.top10Percent;
+  const n = parseNumber(top10Raw);
+  if (n > 1) return n / 100;
+  if (n > 0) return n;
+  return undefined;
+};
+
+const checkConcentration = (ratio?: number) => (typeof ratio === 'number' ? ratio > 0.6 : false);
+
+const huntNextRave = (tokens: Token[]) => {
+  return tokens.filter((token) => {
+    return (
+      token.marketCap > 10000000 &&
+      token.marketCap < 80000000 &&
+      token.isPerpAvailable === true &&
+      token.floatRatio < 0.3 &&
+      token.volume24h / token.marketCap > 0.5 &&
+      token.fundingRate < 0
+    );
+  });
+};
+
 export const fetchAlphaTokens = async (): Promise<Token[]> => {
   try {
-    const parseNumber = (val: unknown) => {
-      const n = typeof val === 'number' ? val : parseFloat(String(val));
-      return Number.isFinite(n) ? n : 0;
-    };
-
     const alphaRes = await axios.get(`${PROXY_BASE}?target=alpha`);
     const alphaData = alphaRes.data?.data || [];
 
@@ -47,6 +114,10 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
       fundingOk = false;
     }
 
+    if (!fundingOk && !perpOk) {
+      throw new Error('PERP_CHECK_UNAVAILABLE');
+    }
+
     const tokens = (alphaData as any[])
       .filter((item) => String(item?.chainName ?? '') === 'BSC' || String(item?.chainId ?? '') === '56')
       .map((item) => {
@@ -55,8 +126,7 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
 
         const isPerpAvailable =
           (fundingOk && fundingMap.has(futuresSymbol)) ||
-          (perpSet.size > 0 && perpSet.has(futuresSymbol)) ||
-          (!fundingOk && !perpOk);
+          (perpSet.size > 0 && perpSet.has(futuresSymbol));
         const fundingRate = fundingOk ? Number(fundingMap.get(futuresSymbol)) || 0 : 0;
 
         const price = parseNumber(item?.price);
@@ -68,19 +138,8 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
         const contractAddress = String(item?.contractAddress ?? '').trim();
         const hasContractAddress = /^0x[a-fA-F0-9]{40}$/.test(contractAddress);
         const stockState = Boolean(item?.stockState);
-        const top10Raw =
-          item?.top10Percentage ??
-          item?.top10HolderRatio ??
-          item?.top10HoldRatio ??
-          item?.top10HoldersRatio ??
-          item?.top10HolderPercent ??
-          item?.top10Percent;
-        const top10HoldersRatio = (() => {
-          const n = parseNumber(top10Raw);
-          if (n > 1) return n / 100;
-          if (n > 0) return n;
-          return undefined;
-        })();
+        const top10HoldersRatio = computeTop10Ratio(item, totalSupply);
+        const concentrated = checkConcentration(top10HoldersRatio);
 
         const tokenData: Token = {
           symbol,
@@ -101,6 +160,9 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
         };
 
         tokenData.degenScore = calculateDegenScore(tokenData);
+        if (concentrated) {
+          tokenData.degenScore = Math.min(100, tokenData.degenScore + 10);
+        }
         (tokenData as any)._hasContractAddress = hasContractAddress;
         (tokenData as any)._stockState = stockState;
         return tokenData;
@@ -108,10 +170,7 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
       .filter((t) => {
         if (!t.symbol) return false;
         if (!(t.marketCap > 0)) return false;
-        if (!(t.marketCap > 10000000 && t.marketCap < 80000000)) return false;
-        if (fundingOk || perpOk) {
-          if (!t.isPerpAvailable) return false;
-        }
+        if (!t.isPerpAvailable) return false;
         const hasContractAddress = Boolean((t as any)._hasContractAddress);
         const stockState = Boolean((t as any)._stockState);
         if (!hasContractAddress) return false;
@@ -119,7 +178,7 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
         return true;
       });
 
-    return tokens;
+    return huntNextRave(tokens);
   } catch (error) {
     console.error('Error fetching real data through proxy:', error);
     return mockTokens.filter(t => t.marketCap > 10000000 && t.marketCap < 80000000 && t.isPerpAvailable);
