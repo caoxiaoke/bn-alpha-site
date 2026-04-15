@@ -1,6 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 
+async function fetchWithFallback(urls: string[]) {
+  let lastError: any = null;
+  for (const url of urls) {
+    try {
+      const response = await axios.get(url, {
+        timeout: 12000,
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          Accept: 'application/json,text/plain,*/*',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          Referer: 'https://www.binance.com/',
+        },
+      });
+      return { response, url };
+    } catch (error: any) {
+      lastError = error;
+      continue;
+    }
+  }
+  throw lastError;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const target = searchParams.get('target');
@@ -13,21 +36,33 @@ export async function GET(request: NextRequest) {
   const ALPHA_LIST_URL = 'https://www.binance.com/bapi/defi/v1/public/wallet-direct/buw/wallet/cex/alpha/all/token/list';
   const ALPHA_TICKER_URL = 'https://www.binance.com/bapi/defi/v1/public/alpha-trade/ticker';
   const ALPHA_KLINES_URL = 'https://www.binance.com/bapi/defi/v1/public/alpha-trade/klines';
-  const FAPI_EXCHANGE_INFO_URL = 'https://fapi.binance.com/fapi/v1/exchangeInfo';
-  const FUNDING_INFO_URL = 'https://fapi.binance.com/fapi/v1/fundingInfo';
+  const FAPI_EXCHANGE_INFO_URLS = [
+    'https://fapi.binance.com/fapi/v1/exchangeInfo',
+    'https://www.binance.com/fapi/v1/exchangeInfo',
+  ];
+  const FUNDING_INFO_URLS = [
+    'https://fapi.binance.com/fapi/v1/fundingInfo',
+    'https://www.binance.com/fapi/v1/fundingInfo',
+  ];
   const TICKER_URL = 'https://api.binance.com/api/v3/ticker/24hr';
-  const OI_URL = 'https://fapi.binance.com/fapi/v1/openInterest';
-  const OI_HIST_URL = 'https://fapi.binance.com/fapi/v1/openInterestHist';
+  const OI_URLS = [
+    'https://fapi.binance.com/fapi/v1/openInterest',
+    'https://www.binance.com/fapi/v1/openInterest',
+  ];
+  const OI_HIST_URLS = [
+    'https://fapi.binance.com/fapi/v1/openInterestHist',
+    'https://www.binance.com/fapi/v1/openInterestHist',
+  ];
 
   try {
-    let url = '';
+    let urls: string[] = [];
     switch (target) {
       case 'alpha':
-        url = ALPHA_LIST_URL;
+        urls = [ALPHA_LIST_URL];
         break;
       case 'alphaTicker':
         if (!symbol) return NextResponse.json({ error: 'Missing symbol' }, { status: 400 });
-        url = `${ALPHA_TICKER_URL}?symbol=${encodeURIComponent(symbol)}`;
+        urls = [`${ALPHA_TICKER_URL}?symbol=${encodeURIComponent(symbol)}`];
         break;
       case 'alphaKlines': {
         if (!symbol) return NextResponse.json({ error: 'Missing symbol' }, { status: 400 });
@@ -37,41 +72,34 @@ export async function GET(request: NextRequest) {
         if (startTime) params.set('startTime', startTime);
         if (endTime) params.set('endTime', endTime);
         if (limit) params.set('limit', limit);
-        url = `${ALPHA_KLINES_URL}?${params.toString()}`;
+        urls = [`${ALPHA_KLINES_URL}?${params.toString()}`];
         break;
       }
       case 'fapiExchangeInfo':
-        url = FAPI_EXCHANGE_INFO_URL;
+        urls = FAPI_EXCHANGE_INFO_URLS;
         break;
       case 'funding':
-        url = FUNDING_INFO_URL;
+        urls = FUNDING_INFO_URLS;
         break;
       case 'ticker':
-        url = TICKER_URL;
+        urls = [TICKER_URL];
         break;
       case 'oi':
         if (!symbol) return NextResponse.json({ error: 'Missing symbol' }, { status: 400 });
-        url = `${OI_URL}?symbol=${encodeURIComponent(symbol)}`;
+        urls = OI_URLS.map((base) => `${base}?symbol=${encodeURIComponent(symbol)}`);
         break;
       case 'oiHist':
         if (!symbol) return NextResponse.json({ error: 'Missing symbol' }, { status: 400 });
-        url = `${OI_HIST_URL}?symbol=${encodeURIComponent(symbol)}&period=5m&limit=12`;
+        urls = OI_HIST_URLS.map(
+          (base) => `${base}?symbol=${encodeURIComponent(symbol)}&period=5m&limit=12`
+        );
         break;
       default:
         return NextResponse.json({ error: 'Invalid target' }, { status: 400 });
     }
 
-    const response = await axios.get(url, {
-      timeout: 12000,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        Accept: 'application/json,text/plain,*/*',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        Referer: 'https://www.binance.com/',
-      },
-    });
-
-    return NextResponse.json(response.data);
+    const { response, url } = await fetchWithFallback(urls);
+    return NextResponse.json({ ...response.data, _sourceUrl: url });
   } catch (error: any) {
     const details = {
       message: String(error?.message ?? ''),

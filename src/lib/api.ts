@@ -14,6 +14,7 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
     const alphaData = alphaRes.data?.data || [];
 
     let perpSet = new Set<string>();
+    let perpOk = false;
     try {
       const exRes = await axios.get(`${PROXY_BASE}?target=fapiExchangeInfo`);
       const symbols = exRes.data?.symbols ?? [];
@@ -27,8 +28,10 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
           )
           .map((s: any) => String(s.symbol))
       );
+      perpOk = true;
     } catch {
       perpSet = new Set();
+      perpOk = false;
     }
 
     let fundingMap = new Map<string, number>();
@@ -86,7 +89,8 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
         if (!t.symbol) return false;
         if (!(t.marketCap > 0)) return false;
         if (!(t.marketCap > 10000000 && t.marketCap < 80000000)) return false;
-        return t.isPerpAvailable;
+        if (fundingOk || perpOk) return t.isPerpAvailable;
+        return true;
       });
 
     return tokens;
