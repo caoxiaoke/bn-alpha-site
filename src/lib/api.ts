@@ -173,7 +173,6 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
         const hasContractAddress = /^0x[a-fA-F0-9]{40}$/.test(contractAddress);
         const stockState = Boolean(item?.stockState);
         const top10HoldersRatio = computeTop10Ratio(item, totalSupply);
-        const concentrated = checkConcentration(top10HoldersRatio);
 
         const tokenData: Token = {
           symbol,
@@ -195,9 +194,6 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
         };
 
         tokenData.degenScore = calculateDegenScore(tokenData);
-        if (concentrated) {
-          tokenData.degenScore = Math.min(100, tokenData.degenScore + 10);
-        }
         (tokenData as any)._hasContractAddress = hasContractAddress;
         (tokenData as any)._stockState = stockState;
         return tokenData;
@@ -255,29 +251,53 @@ export const fetchOIHistory = async (symbol: string): Promise<number[]> => {
 };
 
 export const calculateDegenScore = (token: Partial<Token>) => {
-  let score = 0;
-  
-  // Volume/MC Ratio (30%)
-  if (token.volume24h && token.marketCap && token.volume24h / token.marketCap > 0.5) {
-    score += 30;
-  }
-  
-  // Funding Rate (30%)
-  if (token.fundingRate && token.fundingRate < -0.0001) { // -0.01%
-    score += 30;
-  }
-  
-  // Float Ratio (20%)
-  if (token.floatRatio && token.floatRatio < 0.3) {
-    score += 20;
-  }
-  
-  // Alpha Momentum (20%) - assume rank change or top 10 rank
-  if (token.alphaRankChange && token.alphaRankChange > 0) { // simplified
-    score += 20;
-  }
-  
-  return score;
+  const clamp = (val: number, min: number, max: number) => Math.min(max, Math.max(min, val));
+  const lerpScore = (val: number, inMin: number, inMax: number, outMin: number, outMax: number) => {
+    if (!Number.isFinite(val)) return outMin;
+    if (inMin === inMax) return outMax;
+    const t = clamp((val - inMin) / (inMax - inMin), 0, 1);
+    return outMin + (outMax - outMin) * t;
+  };
+
+  const marketCap = Number(token.marketCap) || 0;
+  const volume24h = Number(token.volume24h) || 0;
+  const floatRatio = Number(token.floatRatio) || 0;
+  const fundingRate = Number(token.fundingRate) || 0;
+  const fundingAvailable = token.fundingAvailable !== false;
+  const top10 = typeof token.top10HoldersRatio === 'number' ? token.top10HoldersRatio : undefined;
+
+  const vmc = marketCap > 0 ? volume24h / marketCap : 0;
+
+  const scoreVmc = lerpScore(vmc, 0.1, 1.0, 0, 30);
+
+  const scoreFloat = (() => {
+    if (!(floatRatio > 0)) return 0;
+    return clamp(lerpScore(floatRatio, 0.3, 0.05, 0, 25), 0, 25);
+  })();
+
+  const scoreFunding = (() => {
+    if (!fundingAvailable) return 8;
+    if (!(fundingRate < 0)) return 0;
+    return clamp(lerpScore(fundingRate, -0.0005, -0.00005, 25, 0), 0, 25);
+  })();
+
+  const scoreTop10 = (() => {
+    if (typeof top10 !== 'number') return 5;
+    return clamp(lerpScore(top10, 0.4, 0.8, 0, 20), 0, 20);
+  })();
+
+  const scoreMarketCap = (() => {
+    if (!(marketCap > 0)) return 0;
+    if (marketCap < 10000000 || marketCap > 80000000) return 0;
+    if (marketCap <= 20000000) return lerpScore(marketCap, 10000000, 20000000, 0, 5);
+    if (marketCap <= 50000000) return 5;
+    return lerpScore(marketCap, 50000000, 80000000, 5, 0);
+  })();
+
+  const scorePerp = token.isPerpAvailable ? 5 : 0;
+
+  const raw = scoreVmc + scoreFloat + scoreFunding + scoreTop10 + scoreMarketCap + scorePerp;
+  return Math.round(clamp(raw, 0, 100));
 };
 
 // Mock data as fallback
