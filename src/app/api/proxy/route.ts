@@ -4,10 +4,18 @@ import axios from 'axios';
 const top10Cache = new Map<string, { value: number; ts: number }>();
 const TOP10_CACHE_TTL_MS = 60_000;
 
-async function fetchWithFallback(urls: string[]) {
+const getCache = new Map<string, { payload: any; ts: number; ttlMs: number }>();
+
+async function fetchWithFallback(urls: string[], ttlMs: number) {
   let lastError: any = null;
   for (const url of urls) {
     try {
+      if (ttlMs > 0) {
+        const cached = getCache.get(url);
+        if (cached && Date.now() - cached.ts < cached.ttlMs) {
+          return { response: { data: cached.payload }, url };
+        }
+      }
       const response = await axios.get(url, {
         timeout: 12000,
         headers: {
@@ -18,6 +26,9 @@ async function fetchWithFallback(urls: string[]) {
           Referer: 'https://www.binance.com/',
         },
       });
+      if (ttlMs > 0) {
+        getCache.set(url, { payload: response.data, ts: Date.now(), ttlMs });
+      }
       return { response, url };
     } catch (error: any) {
       lastError = error;
@@ -52,9 +63,11 @@ export async function GET(request: NextRequest) {
 
   try {
     let urls: string[] = [];
+    let ttlMs = 0;
     switch (target) {
       case 'alpha':
         urls = [ALPHA_LIST_URL];
+        ttlMs = 15_000;
         break;
       case 'alphaTicker':
         if (!symbol) return NextResponse.json({ error: 'Missing symbol' }, { status: 400 });
@@ -73,25 +86,31 @@ export async function GET(request: NextRequest) {
       }
       case 'fapiExchangeInfo':
         urls = FAPI_EXCHANGE_INFO_URLS;
+        ttlMs = 10 * 60_000;
         break;
       case 'funding':
         urls = FUNDING_INFO_URLS;
+        ttlMs = 60_000;
         break;
       case 'premiumIndex':
         urls = PREMIUM_INDEX_URLS;
+        ttlMs = 10_000;
         break;
       case 'ticker':
         urls = [TICKER_URL];
+        ttlMs = 10_000;
         break;
       case 'oi':
         if (!symbol) return NextResponse.json({ error: 'Missing symbol' }, { status: 400 });
         urls = OI_URLS.map((base) => `${base}?symbol=${encodeURIComponent(symbol)}`);
+        ttlMs = 5_000;
         break;
       case 'oiHist':
         if (!symbol) return NextResponse.json({ error: 'Missing symbol' }, { status: 400 });
         urls = OI_HIST_URLS.map(
           (base) => `${base}?symbol=${encodeURIComponent(symbol)}&period=5m&limit=12`
         );
+        ttlMs = 15_000;
         break;
       case 'top10': {
         if (!symbols) return NextResponse.json({ error: 'Missing symbols' }, { status: 400 });
@@ -208,8 +227,20 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Invalid target' }, { status: 400 });
     }
 
-    const { response, url } = await fetchWithFallback(urls);
-    return NextResponse.json({ ...response.data, _sourceUrl: url });
+    const { response, url } = await fetchWithFallback(urls, ttlMs);
+    const payload = response.data;
+    if (Array.isArray(payload)) {
+      return NextResponse.json({
+        code: '000000',
+        message: null,
+        data: payload,
+        _sourceUrl: url,
+      });
+    }
+    if (payload && typeof payload === 'object') {
+      return NextResponse.json({ ...payload, _sourceUrl: url });
+    }
+    return NextResponse.json({ data: payload, _sourceUrl: url });
   } catch (error: any) {
     const upstreamStatus = error?.response?.status ?? null;
     if (

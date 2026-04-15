@@ -141,7 +141,11 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
         if (fundingRes.data?.code === 'RESTRICTED') {
           fundingOk = false;
         } else {
-          const fundingData = fundingRes.data || [];
+          const fundingData = Array.isArray(fundingRes.data)
+            ? fundingRes.data
+            : Array.isArray(fundingRes.data?.data)
+              ? fundingRes.data.data
+              : [];
           fundingMap = new Map<string, number>(
             fundingData.map((f: any) => [String(f.symbol), parseFloat(String(f.lastFundingRate))])
           );
@@ -249,7 +253,12 @@ export const fetchOIHistory = async (symbol: string): Promise<number[]> => {
     const usdtSymbol = `${symbol}USDT`;
     const res = await axios.get(`${PROXY_BASE}?target=oiHist&symbol=${usdtSymbol}`);
     if (res.data?.code === 'RESTRICTED') return [];
-    return res.data.map((h: any) => parseFloat(h.sumOpenInterest));
+    const arr = Array.isArray(res.data)
+      ? res.data
+      : Array.isArray(res.data?.data)
+        ? res.data.data
+        : [];
+    return arr.map((h: any) => parseFloat(h.sumOpenInterest));
   } catch (error) {
     console.error(`Error fetching OI history for ${symbol} via proxy:`, error);
     return [];
