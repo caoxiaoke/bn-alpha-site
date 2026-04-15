@@ -1,126 +1,77 @@
 import axios from 'axios';
 import { Token } from '@/types';
 
-// Use local Next.js proxy to avoid CORS issues
 const PROXY_BASE = '/api/proxy';
 
 export const fetchAlphaTokens = async (): Promise<Token[]> => {
   try {
-    const alphaRes = await axios.get(`${PROXY_BASE}?target=alpha`);
-    const alphaData = alphaRes.data?.data || [];
-    
-    const fundingRes = await axios.get(`${PROXY_BASE}?target=funding`);
-    const fundingData = fundingRes.data || [];
-    const fundingMap = new Map<string, number>(
-      fundingData.map((f: any) => [String(f.symbol), parseFloat(String(f.lastFundingRate))])
-    );
-
-    const chainKey = (item: any) =>
-      String(item?.chainName ?? item?.network ?? item?.chain ?? '').toLowerCase();
-
-    const isBscChain = (item: any) => {
-      const c = chainKey(item);
-      return c.includes('bsc') || c.includes('bnb');
-    };
-
-    const getTokenName = (item: any) => String(item?.tokenName ?? item?.symbol ?? '').trim();
-
     const parseNumber = (val: unknown) => {
       const n = typeof val === 'number' ? val : parseFloat(String(val));
       return Number.isFinite(n) ? n : 0;
     };
 
-    const mapWithConcurrency = async <T, R>(
-      items: T[],
-      limit: number,
-      mapper: (item: T) => Promise<R>
-    ) => {
-      const results: R[] = [];
-      let index = 0;
-      const workers = Array.from({ length: Math.max(1, limit) }, async () => {
-        while (index < items.length) {
-          const current = items[index];
-          index += 1;
-          results.push(await mapper(current));
-        }
-      });
-      await Promise.all(workers);
-      return results;
-    };
+    const alphaRes = await axios.get(`${PROXY_BASE}?target=alpha`);
+    const alphaData = alphaRes.data?.data || [];
 
-    const candidates = alphaData.filter((item: any) => isBscChain(item) && getTokenName(item));
-
-    const tokens = await mapWithConcurrency<any, Token | null>(candidates, 8, async (item) => {
-      const tokenName = getTokenName(item);
-      const futuresSymbol = `${tokenName}USDT`;
-
-      const isPerpAvailable = fundingMap.has(futuresSymbol);
-      if (!isPerpAvailable) return null;
-
-      const fundingRate = Number(fundingMap.get(futuresSymbol)) || 0;
-
-      const alphaTickerRes = await axios.get(
-        `${PROXY_BASE}?target=alphaTicker&symbol=${encodeURIComponent(tokenName)}`
+    let fundingMap = new Map<string, number>();
+    let fundingOk = false;
+    try {
+      const fundingRes = await axios.get(`${PROXY_BASE}?target=funding`);
+      const fundingData = fundingRes.data || [];
+      fundingMap = new Map<string, number>(
+        fundingData.map((f: any) => [String(f.symbol), parseFloat(String(f.lastFundingRate))])
       );
-      const alphaTicker = alphaTickerRes.data?.data ?? alphaTickerRes.data ?? {};
+      fundingOk = true;
+    } catch {
+      fundingOk = false;
+    }
 
-      const price =
-        parseNumber(alphaTicker.price) ||
-        parseNumber(alphaTicker.lastPrice) ||
-        parseNumber(item.price) ||
-        parseNumber(item.lastPrice);
+    const tokens = (alphaData as any[])
+      .filter((item) => String(item?.chainName ?? '') === 'BSC' || String(item?.chainId ?? '') === '56')
+      .map((item) => {
+        const symbol = String(item?.symbol ?? '').trim();
+        const futuresSymbol = `${symbol}USDT`.toUpperCase();
 
-      const volume24h =
-        parseNumber(alphaTicker.volume24h) ||
-        parseNumber(alphaTicker.quoteVolume) ||
-        parseNumber(alphaTicker.volume) ||
-        parseNumber(item.volume24h) ||
-        parseNumber(item.quoteVolume);
+        const isPerpAvailable = fundingOk ? fundingMap.has(futuresSymbol) : false;
+        const fundingRate = fundingOk ? Number(fundingMap.get(futuresSymbol)) || 0 : 0;
 
-      const circulatingSupply =
-        parseNumber(alphaTicker.circulatingSupply) || parseNumber(item.circulatingSupply);
-      const totalSupply = parseNumber(alphaTicker.totalSupply) || parseNumber(item.totalSupply) || circulatingSupply;
+        const price = parseNumber(item?.price);
+        const volume24h = parseNumber(item?.volume24h);
+        const marketCap = parseNumber(item?.marketCap);
+        const fdv = parseNumber(item?.fdv);
+        const totalSupply = parseNumber(item?.totalSupply);
+        const circulatingSupply = parseNumber(item?.circulatingSupply);
 
-      const apiMarketCap =
-        parseNumber(alphaTicker.marketCap) || parseNumber(item.marketCap);
-      const apiFDV = parseNumber(alphaTicker.fdv) || parseNumber(item.fdv);
+        const tokenData: Token = {
+          symbol,
+          price,
+          marketCap,
+          fdv,
+          volume24h,
+          fundingRate,
+          circulatingSupply,
+          totalSupply,
+          floatRatio: totalSupply > 0 ? circulatingSupply / totalSupply : 0,
+          alphaRankChange: 0,
+          isPerpAvailable,
+          degenScore: 0,
+          top10HoldersRatio: undefined,
+          contractAddress: String(item?.contractAddress ?? '').trim(),
+          chain: 'BSC',
+        };
 
-      const marketCap =
-        apiMarketCap > 0 ? apiMarketCap : circulatingSupply > 0 && price > 0 ? circulatingSupply * price : 0;
-      const fdv =
-        apiFDV > 0 ? apiFDV : totalSupply > 0 && price > 0 ? totalSupply * price : marketCap;
+        tokenData.degenScore = calculateDegenScore(tokenData);
+        return tokenData;
+      })
+      .filter((t) => {
+        if (!t.symbol) return false;
+        if (!(t.marketCap > 0)) return false;
+        if (!(t.marketCap > 10000000 && t.marketCap < 80000000)) return false;
+        if (fundingOk) return t.isPerpAvailable;
+        return true;
+      });
 
-      const tokenData: Partial<Token> = {
-        symbol: tokenName,
-        price,
-        marketCap,
-        fdv,
-        volume24h,
-        fundingRate,
-        circulatingSupply,
-        totalSupply,
-        floatRatio: totalSupply > 0 ? circulatingSupply / totalSupply : 0,
-        alphaRankChange: parseNumber(item.rankChange24h),
-        isPerpAvailable,
-        top10HoldersRatio: parseNumber(item.top10Percentage) || 0.65,
-        contractAddress: String(item.tokenAddress ?? '').trim(),
-        chain: 'BSC',
-      };
-
-      const score = calculateDegenScore(tokenData);
-
-      const token: Token = {
-        ...(tokenData as Token),
-        degenScore: score,
-      };
-
-      if (!(token.marketCap > 10000000 && token.marketCap < 80000000)) return null;
-      return token;
-    });
-
-    const filtered = tokens.filter((t): t is Token => Boolean(t));
-
-    return filtered;
+    return tokens;
   } catch (error) {
     console.error('Error fetching real data through proxy:', error);
     return mockTokens.filter(t => t.marketCap > 10000000 && t.marketCap < 80000000 && t.isPerpAvailable);
