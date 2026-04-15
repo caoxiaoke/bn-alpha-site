@@ -16,7 +16,13 @@ export const useTokenStore = create<TokenState>((set) => ({
   tokens: [],
   isLoading: false,
   error: null,
-  setTokens: (tokens) => set({ tokens }),
+  setTokens: (tokens) =>
+    set((state) => {
+      const current = state.selectedToken;
+      if (!current) return { tokens };
+      const updated = tokens.find((t) => t.symbol === current.symbol);
+      return { tokens, selectedToken: updated ?? current };
+    }),
   setLoading: (isLoading) => set({ isLoading }),
   setError: (error) => set({ error }),
   selectedToken: null,
