@@ -184,7 +184,9 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
       .filter((t) => {
         if (!t.symbol) return false;
         if (!(t.marketCap > 0)) return false;
-        if (!t.isPerpAvailable) return false;
+        if (fundingOk || perpOk) {
+          if (!t.isPerpAvailable) return false;
+        }
         const hasContractAddress = Boolean((t as any)._hasContractAddress);
         const stockState = Boolean((t as any)._stockState);
         if (!hasContractAddress) return false;
