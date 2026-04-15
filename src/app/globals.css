@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 5%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 5%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 5%;
+    --primary: 158 80% 49%; /* #18E299 */
+    --primary-foreground: 0 0% 5%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 5%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 40%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 5%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 0 0% 0% / 0.05; /* 5% black opacity */
+    --input: 0 0% 89.8%;
+    --ring: 158 80% 49%;
+    --radius: 1rem; /* 16px radius */
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 158 80% 49%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 158 80% 49%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Custom Mintlify styles */
+.hero-gradient {
+  background: radial-gradient(circle at 50% 50%, rgba(24, 226, 153, 0.1) 0%, rgba(255, 255, 255, 0) 70%);
+}
+
+.near-black-bg {
+  background-color: #0d0d0d;
+}
+
+.brand-green-text {
+  color: #18E299;
+}
+
+/* Animation for price flashing */
+@keyframes flash-green-text {
+  0%, 100% { color: inherit; }
+  50% { color: #18E299; font-weight: bold; }
+}
+
+@keyframes flash-red-text {
+  0%, 100% { color: inherit; }
+  50% { color: #d45656; font-weight: bold; }
+}
+
+/* Alert flashing background */
+@keyframes flash-red-bg {
+  0%, 100% { background-color: rgba(212, 86, 86, 0.1); }
+  50% { background-color: rgba(212, 86, 86, 0.3); }
+}
+
+.animate-flash-green {
+  animation: flash-green-text 1s ease-in-out;
+}
+
+.animate-flash-red-text {
+  animation: flash-red-text 1s ease-in-out;
+}
+
+.animate-flash-red-bg {
+  animation: flash-red-bg 2s infinite;
+}
