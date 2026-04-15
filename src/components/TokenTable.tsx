@@ -69,6 +69,7 @@ export const TokenTable: React.FC<TokenTableProps> = ({ tokens }) => {
         <thead>
           <tr className="border-b border-border bg-gray-50/50">
             <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-500 font-mono">{t.token}</th>
+            <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-500 font-mono">{t.contract}</th>
             <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-500 font-mono">{t.price}</th>
             <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-500 font-mono">{t.mc}</th>
             <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-500 font-mono">{t.fdv}</th>
@@ -81,6 +82,8 @@ export const TokenTable: React.FC<TokenTableProps> = ({ tokens }) => {
           {sortedTokens.map((token) => {
             const alert = isAlertRow(token);
             const vmcRatio = token.volume24h / token.marketCap;
+            const contractAddress = String(token.contractAddress ?? '').trim();
+            const hasContractAddress = /^0x[a-fA-F0-9]{40}$/.test(contractAddress);
             
             return (
               <tr
@@ -100,6 +103,9 @@ export const TokenTable: React.FC<TokenTableProps> = ({ tokens }) => {
                       </span>
                     )}
                   </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-gray-500">
+                  {hasContractAddress ? `${contractAddress.slice(0, 6)}...${contractAddress.slice(-4)}` : '-'}
                 </td>
                 <PriceCell price={token.price} />
                 <td className="px-6 py-4 whitespace-nowrap font-mono text-sm">

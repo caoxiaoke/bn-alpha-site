@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Token } from '@/types';
 import { useTokenStore } from '@/store/useTokenStore';
 import { fetchOIHistory, fetchTokenOI } from '@/lib/api';
-import { X, ExternalLink, Activity, BarChart3, Users } from 'lucide-react';
+import { X, ExternalLink, Activity, BarChart3, Users, Copy, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLanguageStore, translations } from '@/store/useLanguageStore';
 
@@ -16,6 +16,7 @@ export const TokenSidebar: React.FC = () => {
   const [oiHistory, setOiHistory] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -37,6 +38,10 @@ export const TokenSidebar: React.FC = () => {
 
   if (!selectedToken || !mounted) return null;
 
+  const futuresSymbol = `${selectedToken.symbol}USDT`.toUpperCase();
+  const contractAddress = String(selectedToken.contractAddress ?? '').trim();
+  const hasContractAddress = /^0x[a-fA-F0-9]{40}$/.test(contractAddress);
+
   const formatCurrency = (val: number) => {
     if (val >= 1000000) return `$${(val / 1000000).toFixed(2)}M`;
     if (val >= 1000) return `$${(val / 1000).toFixed(2)}K`;
@@ -52,6 +57,21 @@ export const TokenSidebar: React.FC = () => {
     if (val >= 1000000) return `${(val / 1000000).toFixed(2)}M`;
     if (val >= 1000) return `${(val / 1000).toFixed(2)}K`;
     return val.toLocaleString();
+  };
+
+  const shortAddress = hasContractAddress
+    ? `${contractAddress.slice(0, 6)}...${contractAddress.slice(-4)}`
+    : '-';
+
+  const onCopyAddress = async () => {
+    if (!hasContractAddress) return;
+    try {
+      await navigator.clipboard.writeText(contractAddress);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
   };
 
   return (
@@ -95,6 +115,40 @@ export const TokenSidebar: React.FC = () => {
         <div className="bg-gray-50/50 rounded-2xl p-4 border border-border/50">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 font-mono">{t.totalSupply}</p>
           <p className="text-xl font-bold font-mono text-nearblack">{formatNumber(selectedToken.totalSupply)}</p>
+        </div>
+        <div className="bg-gray-50/50 rounded-2xl p-4 border border-border/50 col-span-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1 font-mono">{t.contract}</p>
+              <p className="text-lg font-bold font-mono text-nearblack truncate">{shortAddress}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onCopyAddress}
+                disabled={!hasContractAddress}
+                className={cn(
+                  "inline-flex items-center gap-2 px-3 py-2 rounded-full border border-border bg-white text-nearblack text-xs font-bold font-mono transition-colors",
+                  hasContractAddress ? "hover:bg-gray-50" : "opacity-50 cursor-not-allowed"
+                )}
+              >
+                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                <span>{copied ? t.copied : t.copy}</span>
+              </button>
+              <a
+                href={hasContractAddress ? `https://bscscan.com/token/${contractAddress}` : undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  "inline-flex items-center gap-2 px-3 py-2 rounded-full border border-border bg-white text-nearblack text-xs font-bold font-mono transition-colors",
+                  hasContractAddress ? "hover:bg-gray-50" : "opacity-50 pointer-events-none"
+                )}
+              >
+                <ExternalLink className="w-4 h-4" />
+                <span>{t.viewBscscan}</span>
+              </a>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -158,7 +212,7 @@ export const TokenSidebar: React.FC = () => {
 
         <section className="pt-4 space-y-3">
           <a
-            href={`https://www.binance.com/zh-CN/trade/${selectedToken.symbol}_USDT?type=cross`}
+            href={`https://www.binance.com/zh-CN/futures/${encodeURIComponent(futuresSymbol)}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-between w-full p-4 bg-nearblack text-white rounded-2xl font-bold hover:bg-nearblack/90 transition-all group"
@@ -170,10 +224,13 @@ export const TokenSidebar: React.FC = () => {
             <ExternalLink className="w-5 h-5 opacity-50 group-hover:opacity-100" />
           </a>
           <a
-            href={`https://dexscreener.com/bsc/${selectedToken.contractAddress}`}
+            href={hasContractAddress ? `https://dexscreener.com/bsc/${contractAddress}` : undefined}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-between w-full p-4 border border-border text-nearblack rounded-2xl font-bold hover:bg-gray-50 transition-all group"
+            className={cn(
+              "flex items-center justify-between w-full p-4 border border-border text-nearblack rounded-2xl font-bold transition-all group",
+              hasContractAddress ? "hover:bg-gray-50" : "opacity-50 pointer-events-none"
+            )}
           >
             <span className="flex items-center space-x-2">
               <BarChart3 className="w-5 h-5 text-gray-400" />
