@@ -47,6 +47,10 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
       fundingOk = false;
     }
 
+    if (!fundingOk && !perpOk) {
+      throw new Error('PERP_CHECK_UNAVAILABLE');
+    }
+
     const tokens = (alphaData as any[])
       .filter((item) => String(item?.chainName ?? '') === 'BSC' || String(item?.chainId ?? '') === '56')
       .map((item) => {
@@ -63,6 +67,22 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
         const fdv = parseNumber(item?.fdv);
         const totalSupply = parseNumber(item?.totalSupply);
         const circulatingSupply = parseNumber(item?.circulatingSupply);
+        const contractAddress = String(item?.contractAddress ?? '').trim();
+        const hasContractAddress = /^0x[a-fA-F0-9]{40}$/.test(contractAddress);
+        const stockState = Boolean(item?.stockState);
+        const top10Raw =
+          item?.top10Percentage ??
+          item?.top10HolderRatio ??
+          item?.top10HoldRatio ??
+          item?.top10HoldersRatio ??
+          item?.top10HolderPercent ??
+          item?.top10Percent;
+        const top10HoldersRatio = (() => {
+          const n = parseNumber(top10Raw);
+          if (n > 1) return n / 100;
+          if (n > 0) return n;
+          return undefined;
+        })();
 
         const tokenData: Token = {
           symbol,
@@ -77,19 +97,25 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
           alphaRankChange: 0,
           isPerpAvailable,
           degenScore: 0,
-          top10HoldersRatio: undefined,
-          contractAddress: String(item?.contractAddress ?? '').trim(),
+          top10HoldersRatio,
+          contractAddress,
           chain: 'BSC',
         };
 
         tokenData.degenScore = calculateDegenScore(tokenData);
+        (tokenData as any)._hasContractAddress = hasContractAddress;
+        (tokenData as any)._stockState = stockState;
         return tokenData;
       })
       .filter((t) => {
         if (!t.symbol) return false;
         if (!(t.marketCap > 0)) return false;
         if (!(t.marketCap > 10000000 && t.marketCap < 80000000)) return false;
-        if (fundingOk || perpOk) return t.isPerpAvailable;
+        if (!t.isPerpAvailable) return false;
+        const hasContractAddress = Boolean((t as any)._hasContractAddress);
+        const stockState = Boolean((t as any)._stockState);
+        if (!hasContractAddress) return false;
+        if (stockState) return false;
         return true;
       });
 
@@ -107,7 +133,7 @@ export const fetchTokenOI = async (symbol: string) => {
     return parseFloat(res.data.openInterest);
   } catch (error) {
     console.error(`Error fetching OI for ${symbol} via proxy:`, error);
-    return 0;
+    return null;
   }
 };
 

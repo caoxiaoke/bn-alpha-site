@@ -10,7 +10,7 @@ import { Activity, ShieldAlert, BarChart3, TrendingUp, RefreshCw, Languages } fr
 import { cn } from '@/lib/utils';
 
 export default function Home() {
-  const { tokens, setTokens, isLoading, setLoading } = useTokenStore();
+  const { tokens, setTokens, isLoading, setLoading, error, setError } = useTokenStore();
   const { language, setLanguage } = useLanguageStore();
   const t = translations[language];
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
@@ -20,10 +20,12 @@ export default function Home() {
   const fetchData = async () => {
     setIsRefreshing(true);
     try {
+      setError(null);
       const data = await fetchAlphaTokens();
       setTokens(data);
     } catch (error) {
-      console.error('Fetch failed, using fallback', error);
+      setTokens([]);
+      setError(String((error as any)?.message ?? error ?? 'UNKNOWN_ERROR'));
     } finally {
       setLastUpdated(new Date());
       setIsRefreshing(false);
@@ -124,6 +126,14 @@ export default function Home() {
         </div>
 
         {/* Main Content: Table */}
+        {error && (
+          <div className="mb-6 rounded-2xl border border-border bg-gray-50 px-6 py-4">
+            <div className="text-sm font-bold text-nearblack">{t.alertStatus}</div>
+            <div className="mt-1 text-xs font-mono text-gray-500 break-all">
+              {error === 'PERP_CHECK_UNAVAILABLE' ? t.perpCheckUnavailable : error}
+            </div>
+          </div>
+        )}
         {isLoading ? (
           <div className="w-full h-[400px] flex items-center justify-center bg-gray-50 rounded-2xl border border-dashed border-border">
             <div className="flex flex-col items-center space-y-4">

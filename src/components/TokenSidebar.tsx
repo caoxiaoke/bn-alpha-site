@@ -181,7 +181,7 @@ export const TokenSidebar: React.FC = () => {
                 />
               </svg>
             ) : (
-              <p className="text-gray-400 font-mono text-xs">{t.holdingMock}</p>
+              <p className="text-gray-400 font-mono text-xs">{t.dataUnavailable}</p>
             )}
           </div>
         </section>
@@ -195,13 +195,15 @@ export const TokenSidebar: React.FC = () => {
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-semibold text-gray-600">{t.holdingLevel}</span>
               <span className="text-lg font-bold font-mono">
-                {(selectedToken.top10HoldersRatio ? selectedToken.top10HoldersRatio * 100 : 68.4).toFixed(1)}%
+                {typeof selectedToken.top10HoldersRatio === 'number'
+                  ? `${(selectedToken.top10HoldersRatio * 100).toFixed(1)}%`
+                  : '-'}
               </span>
             </div>
             <div className="w-full bg-gray-200 h-3 rounded-full overflow-hidden">
               <div 
                 className="bg-brand h-full rounded-full transition-all duration-1000" 
-                style={{ width: `${(selectedToken.top10HoldersRatio ? selectedToken.top10HoldersRatio * 100 : 68.4)}%` }}
+                style={{ width: `${typeof selectedToken.top10HoldersRatio === 'number' ? selectedToken.top10HoldersRatio * 100 : 0}%` }}
               ></div>
             </div>
             <p className="mt-3 text-xs text-gray-400 font-mono italic">
