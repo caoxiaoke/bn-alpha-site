@@ -260,17 +260,25 @@ export const fetchTop10Ratios = async (symbols: string[]): Promise<Record<string
   try {
     const uniq = Array.from(
       new Set(symbols.map((s) => String(s).trim().toUpperCase()).filter(Boolean))
-    ).slice(0, 25);
+    );
     if (!uniq.length) return {};
-    const res = await axios.get(`${PROXY_BASE}?target=top10&symbols=${encodeURIComponent(uniq.join(','))}`);
-    if (res.data?.code === 'RESTRICTED' || res.data?.code === 'UNAVAILABLE') return {};
-    const data = res.data?.data ?? {};
-    if (!data || typeof data !== 'object') return {};
     const out: Record<string, number> = {};
-    for (const [k, v] of Object.entries(data)) {
-      const n = typeof v === 'number' ? v : parseFloat(String(v));
-      if (!Number.isFinite(n)) continue;
-      out[String(k).toUpperCase()] = n;
+
+    const chunkSize = 25;
+    for (let i = 0; i < uniq.length; i += chunkSize) {
+      const chunk = uniq.slice(i, i + chunkSize);
+      const res = await axios.get(
+        `${PROXY_BASE}?target=top10&symbols=${encodeURIComponent(chunk.join(','))}`
+      );
+      if (res.data?.code === 'RESTRICTED') return {};
+      if (res.data?.code === 'UNAVAILABLE') continue;
+      const data = res.data?.data ?? {};
+      if (!data || typeof data !== 'object') continue;
+      for (const [k, v] of Object.entries(data)) {
+        const n = typeof v === 'number' ? v : parseFloat(String(v));
+        if (!Number.isFinite(n)) continue;
+        out[String(k).toUpperCase()] = n;
+      }
     }
     return out;
   } catch {

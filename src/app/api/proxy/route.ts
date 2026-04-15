@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 
+const top10Cache = new Map<string, { value: number; ts: number }>();
+const TOP10_CACHE_TTL_MS = 60_000;
+
 async function fetchWithFallback(urls: string[]) {
   let lastError: any = null;
   for (const url of urls) {
@@ -96,7 +99,7 @@ export async function GET(request: NextRequest) {
           .split(',')
           .map((s) => s.trim())
           .filter(Boolean)
-          .slice(0, 25);
+          .slice(0, 100);
         const chunks: string[][] = [];
         for (let i = 0; i < requestedSymbols.length; i += 5) {
           chunks.push(requestedSymbols.slice(i, i + 5));
@@ -105,9 +108,22 @@ export async function GET(request: NextRequest) {
         const results: Record<string, number> = {};
         const rankTypes = [10, 20, 30];
 
+        const now = Date.now();
+        for (const sym of requestedSymbols) {
+          const key = sym.toUpperCase();
+          const cached = top10Cache.get(key);
+          if (cached && now - cached.ts < TOP10_CACHE_TTL_MS) {
+            results[key] = cached.value;
+          }
+        }
+
         try {
           for (const chunk of chunks) {
-            const missing = new Set(chunk.map((s) => s.toUpperCase()));
+            const missing = new Set(
+              chunk
+                .map((s) => s.toUpperCase())
+                .filter((s) => !(s in results))
+            );
             for (const rankType of rankTypes) {
               if (missing.size === 0) break;
               const resp = await axios.post(
@@ -152,6 +168,7 @@ export async function GET(request: NextRequest) {
                 if (!Number.isFinite(n)) continue;
                 const ratio = n > 1 ? n / 100 : n;
                 results[sym] = ratio;
+                top10Cache.set(sym, { value: ratio, ts: now });
                 missing.delete(sym);
               }
             }

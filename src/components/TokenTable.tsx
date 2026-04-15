@@ -69,6 +69,13 @@ export const TokenTable: React.FC<TokenTableProps> = ({ tokens }) => {
     return formatPercent(token.fundingRate);
   };
 
+  const formatTop10 = (ratio?: number) => {
+    if (typeof ratio !== 'number') return '-';
+    const pct = ratio * 100;
+    if (pct < 0.1) return `${pct.toFixed(4)}%`;
+    return `${pct.toFixed(1)}%`;
+  };
+
   return (
     <div className="w-full overflow-hidden rounded-2xl border border-border bg-white shadow-sm">
       <table className="w-full text-left border-collapse">
@@ -115,7 +122,7 @@ export const TokenTable: React.FC<TokenTableProps> = ({ tokens }) => {
                   {hasContractAddress ? `${contractAddress.slice(0, 6)}...${contractAddress.slice(-4)}` : '-'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-gray-500">
-                  {typeof token.top10HoldersRatio === 'number' ? `${(token.top10HoldersRatio * 100).toFixed(1)}%` : '-'}
+                  {formatTop10(token.top10HoldersRatio)}
                 </td>
                 <PriceCell price={token.price} />
                 <td className="px-6 py-4 whitespace-nowrap font-mono text-sm">
