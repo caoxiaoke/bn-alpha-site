@@ -263,6 +263,7 @@ export const fetchTop10Ratios = async (symbols: string[]): Promise<Record<string
     ).slice(0, 25);
     if (!uniq.length) return {};
     const res = await axios.get(`${PROXY_BASE}?target=top10&symbols=${encodeURIComponent(uniq.join(','))}`);
+    if (res.data?.code === 'RESTRICTED' || res.data?.code === 'UNAVAILABLE') return {};
     const data = res.data?.data ?? {};
     if (!data || typeof data !== 'object') return {};
     const out: Record<string, number> = {};

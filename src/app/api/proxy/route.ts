@@ -105,55 +105,79 @@ export async function GET(request: NextRequest) {
         const results: Record<string, number> = {};
         const rankTypes = [10, 20, 30];
 
-        for (const chunk of chunks) {
-          const missing = new Set(chunk.map((s) => s.toUpperCase()));
-          for (const rankType of rankTypes) {
-            if (missing.size === 0) break;
-            const resp = await axios.post(
-              TOKEN_PULSE_RANK_URL,
-              {
-                chainId,
-                rankType,
-                limit: 200,
-                keywords: Array.from(missing),
-              },
-              {
-                timeout: 12000,
-                headers: {
-                  'User-Agent':
-                    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                  Accept: 'application/json,text/plain,*/*',
-                  'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-                  Referer: 'https://web3.binance.com/',
-                  'Content-Type': 'application/json',
+        try {
+          for (const chunk of chunks) {
+            const missing = new Set(chunk.map((s) => s.toUpperCase()));
+            for (const rankType of rankTypes) {
+              if (missing.size === 0) break;
+              const resp = await axios.post(
+                TOKEN_PULSE_RANK_URL,
+                {
+                  chainId,
+                  rankType,
+                  limit: 200,
+                  keywords: Array.from(missing),
                 },
-              }
-            );
+                {
+                  timeout: 12000,
+                  headers: {
+                    'User-Agent':
+                      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    Accept: 'application/json,text/plain,*/*',
+                    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                    Referer: 'https://web3.binance.com/',
+                    'Content-Type': 'application/json',
+                  },
+                }
+              );
 
-            const payload = resp.data;
-            const list =
-              payload?.data?.list ??
-              payload?.data?.data?.list ??
-              payload?.data?.data ??
-              payload?.data ??
-              [];
-            const arr = Array.isArray(list) ? list : [];
-            for (const item of arr) {
-              const sym = String(item?.symbol ?? item?.tokenSymbol ?? item?.baseTokenSymbol ?? '').toUpperCase();
-              if (!sym || !missing.has(sym)) continue;
-              const raw =
-                item?.holdersTop10Percent ??
-                item?.holdersTop10Percentage ??
-                item?.holdersTop10 ??
-                item?.holdersTop10Ratio ??
-                item?.holdersTop10HoldPercent;
-              const n = Number.parseFloat(String(raw));
-              if (!Number.isFinite(n)) continue;
-              const ratio = n > 1 ? n / 100 : n;
-              results[sym] = ratio;
-              missing.delete(sym);
+              const payload = resp.data;
+              const list =
+                payload?.data?.list ??
+                payload?.data?.data?.list ??
+                payload?.data?.data ??
+                payload?.data ??
+                [];
+              const arr = Array.isArray(list) ? list : [];
+              for (const item of arr) {
+                const sym = String(item?.symbol ?? item?.tokenSymbol ?? item?.baseTokenSymbol ?? '').toUpperCase();
+                if (!sym || !missing.has(sym)) continue;
+                const raw =
+                  item?.holdersTop10Percent ??
+                  item?.holdersTop10Percentage ??
+                  item?.holdersTop10 ??
+                  item?.holdersTop10Ratio ??
+                  item?.holdersTop10HoldPercent;
+                const n = Number.parseFloat(String(raw));
+                if (!Number.isFinite(n)) continue;
+                const ratio = n > 1 ? n / 100 : n;
+                results[sym] = ratio;
+                missing.delete(sym);
+              }
             }
           }
+        } catch (error: any) {
+          const upstreamStatus = error?.response?.status ?? null;
+          if (upstreamStatus === 451) {
+            return NextResponse.json(
+              {
+                code: 'RESTRICTED',
+                message: 'UPSTREAM_RESTRICTED',
+                data: {},
+                _sourceUrl: TOKEN_PULSE_RANK_URL,
+              },
+              { status: 200 }
+            );
+          }
+          return NextResponse.json(
+            {
+              code: 'UNAVAILABLE',
+              message: 'TOP10_FETCH_FAILED',
+              data: {},
+              _sourceUrl: TOKEN_PULSE_RANK_URL,
+            },
+            { status: 200 }
+          );
         }
 
         return NextResponse.json({
