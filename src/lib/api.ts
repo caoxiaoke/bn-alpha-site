@@ -78,7 +78,7 @@ const huntNextRave = (
       (requirePerp ? token.isPerpAvailable === true : true) &&
       token.floatRatio < 0.3 &&
       token.volume24h / token.marketCap > 0.5 &&
-      (requireNegativeFunding ? token.fundingRate < 0 : true)
+      (requireNegativeFunding ? token.fundingAvailable !== false && token.fundingRate < 0 : true)
     );
   });
 };
@@ -123,11 +123,13 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
       } else {
         const premiumData = Array.isArray(premiumRes.data) ? premiumRes.data : premiumRes.data?.data ?? premiumRes.data;
         if (Array.isArray(premiumData)) {
-          fundingMap = new Map<string, number>(
-            premiumData
-              .filter((p: any) => p?.symbol)
-              .map((p: any) => [String(p.symbol), parseFloat(String(p.lastFundingRate))])
-          );
+          fundingMap = new Map<string, number>();
+          for (const p of premiumData) {
+            const sym = String(p?.symbol ?? '').trim();
+            const rate = parseFloat(String(p?.lastFundingRate));
+            if (!sym || !Number.isFinite(rate)) continue;
+            fundingMap.set(sym, rate);
+          }
           fundingOk = fundingMap.size > 0;
         }
       }
@@ -146,9 +148,13 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
             : Array.isArray(fundingRes.data?.data)
               ? fundingRes.data.data
               : [];
-          fundingMap = new Map<string, number>(
-            fundingData.map((f: any) => [String(f.symbol), parseFloat(String(f.lastFundingRate))])
-          );
+          fundingMap = new Map<string, number>();
+          for (const f of fundingData) {
+            const sym = String(f?.symbol ?? '').trim();
+            const rate = parseFloat(String(f?.lastFundingRate));
+            if (!sym || !Number.isFinite(rate)) continue;
+            fundingMap.set(sym, rate);
+          }
           fundingOk = fundingMap.size > 0;
         }
       } catch {
@@ -165,7 +171,8 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
         const isPerpAvailable =
           (fundingOk && fundingMap.has(futuresSymbol)) ||
           (perpSet.size > 0 && perpSet.has(futuresSymbol));
-        const fundingRate = fundingOk ? Number(fundingMap.get(futuresSymbol)) || 0 : 0;
+        const hasFunding = fundingOk && fundingMap.has(futuresSymbol);
+        const fundingRate = hasFunding ? Number(fundingMap.get(futuresSymbol)) : 0;
 
         const price = parseNumber(item?.price);
         const volume24h = parseNumber(item?.volume24h);
@@ -185,7 +192,7 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
           fdv,
           volume24h,
           fundingRate,
-          fundingAvailable: fundingOk,
+          fundingAvailable: hasFunding,
           circulatingSupply,
           totalSupply,
           floatRatio: totalSupply > 0 ? circulatingSupply / totalSupply : 0,
