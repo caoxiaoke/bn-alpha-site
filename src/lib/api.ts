@@ -248,7 +248,14 @@ export const fetchTokenOI = async (symbol: string) => {
     const usdtSymbol = `${symbol}USDT`;
     const res = await axios.get(`${PROXY_BASE}?target=oi&symbol=${usdtSymbol}`);
     if (res.data?.code === 'RESTRICTED') return null;
-    return parseFloat(res.data.openInterest);
+    if (typeof res.data?.openInterest !== 'undefined') {
+      const v = parseFloat(String(res.data.openInterest));
+      return Number.isFinite(v) ? v : null;
+    }
+    const arr = Array.isArray(res.data?.data) ? res.data.data : Array.isArray(res.data) ? res.data : [];
+    const first = arr[0];
+    const v = parseFloat(String(first?.sumOpenInterest));
+    return Number.isFinite(v) ? v : null;
   } catch (error) {
     console.error(`Error fetching OI for ${symbol} via proxy:`, error);
     return null;

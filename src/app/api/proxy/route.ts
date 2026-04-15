@@ -56,8 +56,11 @@ export async function GET(request: NextRequest) {
   const FUNDING_INFO_URLS = ['https://fapi.binance.com/fapi/v1/fundingInfo'];
   const PREMIUM_INDEX_URLS = ['https://fapi.binance.com/fapi/v1/premiumIndex'];
   const TICKER_URL = 'https://api.binance.com/api/v3/ticker/24hr';
-  const OI_URLS = ['https://fapi.binance.com/fapi/v1/openInterest'];
-  const OI_HIST_URLS = ['https://fapi.binance.com/fapi/v1/openInterestHist'];
+  const OI_URL = 'https://fapi.binance.com/fapi/v1/openInterest';
+  const OI_HIST_URLS = [
+    'https://fapi.binance.com/futures/data/openInterestHist',
+    'https://fapi.binance.com/fapi/v1/openInterestHist',
+  ];
   const TOKEN_PULSE_RANK_URL =
     'https://web3.binance.com/bapi/defi/v1/public/wallet-direct/buw/wallet/market/token/pulse/rank/list/ai';
 
@@ -102,9 +105,49 @@ export async function GET(request: NextRequest) {
         break;
       case 'oi':
         if (!symbol) return NextResponse.json({ error: 'Missing symbol' }, { status: 400 });
-        urls = OI_URLS.map((base) => `${base}?symbol=${encodeURIComponent(symbol)}`);
-        ttlMs = 5_000;
-        break;
+        try {
+          const resp = await axios.get(`${OI_URL}?symbol=${encodeURIComponent(symbol)}`, {
+            timeout: 12000,
+            headers: {
+              'User-Agent':
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              Accept: 'application/json,text/plain,*/*',
+              'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+              Referer: 'https://www.binance.com/',
+            },
+          });
+          return NextResponse.json({ ...resp.data, _sourceUrl: OI_URL });
+        } catch (error: any) {
+          const upstreamStatus = error?.response?.status ?? null;
+          if (upstreamStatus === 451) {
+            return NextResponse.json(
+              {
+                code: 'RESTRICTED',
+                message: 'UPSTREAM_RESTRICTED',
+                data: null,
+                _sourceUrl: String(error?.config?.url ?? OI_URL),
+              },
+              { status: 200 }
+            );
+          }
+          const fallbackUrl = `${OI_HIST_URLS[0]}?symbol=${encodeURIComponent(symbol)}&period=5m&limit=1`;
+          const fallback = await axios.get(fallbackUrl, {
+            timeout: 12000,
+            headers: {
+              'User-Agent':
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              Accept: 'application/json,text/plain,*/*',
+              'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+              Referer: 'https://www.binance.com/',
+            },
+          });
+          const arr = Array.isArray(fallback.data) ? fallback.data : [];
+          const first = arr[0];
+          return NextResponse.json({
+            openInterest: String(first?.sumOpenInterest ?? ''),
+            _sourceUrl: fallbackUrl,
+          });
+        }
       case 'oiHist':
         if (!symbol) return NextResponse.json({ error: 'Missing symbol' }, { status: 400 });
         urls = OI_HIST_URLS.map(
