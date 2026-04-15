@@ -117,19 +117,39 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
     let fundingMap = new Map<string, number>();
     let fundingOk = false;
     try {
-      const fundingRes = await axios.get(`${PROXY_BASE}?target=funding`);
-      if (fundingRes.data?.code === 'RESTRICTED') {
-        fundingMap = new Map<string, number>();
+      const premiumRes = await axios.get(`${PROXY_BASE}?target=premiumIndex`);
+      if (premiumRes.data?.code === 'RESTRICTED') {
         fundingOk = false;
       } else {
-        const fundingData = fundingRes.data || [];
-        fundingMap = new Map<string, number>(
-          fundingData.map((f: any) => [String(f.symbol), parseFloat(String(f.lastFundingRate))])
-        );
-        fundingOk = true;
+        const premiumData = Array.isArray(premiumRes.data) ? premiumRes.data : premiumRes.data?.data ?? premiumRes.data;
+        if (Array.isArray(premiumData)) {
+          fundingMap = new Map<string, number>(
+            premiumData
+              .filter((p: any) => p?.symbol)
+              .map((p: any) => [String(p.symbol), parseFloat(String(p.lastFundingRate))])
+          );
+          fundingOk = fundingMap.size > 0;
+        }
       }
     } catch {
       fundingOk = false;
+    }
+
+    if (!fundingOk) {
+      try {
+        const fundingRes = await axios.get(`${PROXY_BASE}?target=funding`);
+        if (fundingRes.data?.code === 'RESTRICTED') {
+          fundingOk = false;
+        } else {
+          const fundingData = fundingRes.data || [];
+          fundingMap = new Map<string, number>(
+            fundingData.map((f: any) => [String(f.symbol), parseFloat(String(f.lastFundingRate))])
+          );
+          fundingOk = fundingMap.size > 0;
+        }
+      } catch {
+        fundingOk = false;
+      }
     }
 
     const tokens = (alphaData as any[])
@@ -162,6 +182,7 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
           fdv,
           volume24h,
           fundingRate,
+          fundingAvailable: fundingOk,
           circulatingSupply,
           totalSupply,
           floatRatio: totalSupply > 0 ? circulatingSupply / totalSupply : 0,

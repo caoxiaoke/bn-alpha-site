@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
   const ALPHA_KLINES_URL = 'https://www.binance.com/bapi/defi/v1/public/alpha-trade/klines';
   const FAPI_EXCHANGE_INFO_URLS = ['https://fapi.binance.com/fapi/v1/exchangeInfo'];
   const FUNDING_INFO_URLS = ['https://fapi.binance.com/fapi/v1/fundingInfo'];
+  const PREMIUM_INDEX_URLS = ['https://fapi.binance.com/fapi/v1/premiumIndex'];
   const TICKER_URL = 'https://api.binance.com/api/v3/ticker/24hr';
   const OI_URLS = ['https://fapi.binance.com/fapi/v1/openInterest'];
   const OI_HIST_URLS = ['https://fapi.binance.com/fapi/v1/openInterestHist'];
@@ -69,6 +70,9 @@ export async function GET(request: NextRequest) {
       case 'funding':
         urls = FUNDING_INFO_URLS;
         break;
+      case 'premiumIndex':
+        urls = PREMIUM_INDEX_URLS;
+        break;
       case 'ticker':
         urls = [TICKER_URL];
         break;
@@ -94,7 +98,8 @@ export async function GET(request: NextRequest) {
       (target === 'oi' ||
         target === 'oiHist' ||
         target === 'fapiExchangeInfo' ||
-        target === 'funding') &&
+        target === 'funding' ||
+        target === 'premiumIndex') &&
       upstreamStatus === 451
     ) {
       return NextResponse.json(

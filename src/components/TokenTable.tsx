@@ -48,6 +48,7 @@ export const TokenTable: React.FC<TokenTableProps> = ({ tokens }) => {
   const isAlertRow = (token: Token) => {
     return (
       token.marketCap < 50000000 &&
+      token.fundingAvailable !== false &&
       token.fundingRate < -0.0001 &&
       token.volume24h / token.marketCap > 0.5
     );
@@ -61,6 +62,11 @@ export const TokenTable: React.FC<TokenTableProps> = ({ tokens }) => {
 
   const formatPercent = (val: number) => {
     return `${(val * 100).toFixed(4)}%`;
+  };
+
+  const formatFunding = (token: Token) => {
+    if (token.fundingAvailable === false) return '-';
+    return formatPercent(token.fundingRate);
   };
 
   return (
@@ -120,8 +126,8 @@ export const TokenTable: React.FC<TokenTableProps> = ({ tokens }) => {
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap font-mono text-sm">
-                  <span className={cn(token.fundingRate < -0.0001 ? "text-error font-bold" : "text-gray-600")}>
-                    {formatPercent(token.fundingRate)}
+                  <span className={cn(token.fundingAvailable !== false && token.fundingRate < -0.0001 ? "text-error font-bold" : "text-gray-600")}>
+                    {formatFunding(token)}
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">

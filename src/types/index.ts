@@ -5,6 +5,7 @@ export interface Token {
   fdv: number; // Fully Diluted Valuation
   volume24h: number;
   fundingRate: number;
+  fundingAvailable?: boolean;
   floatRatio: number; // circulatingSupply / totalSupply
   alphaRankChange: number;
   isPerpAvailable: boolean;

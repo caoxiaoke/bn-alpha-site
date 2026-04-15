@@ -17,6 +17,26 @@ export default function Home() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [mounted, setMounted] = useState(false);
 
+  const activeAlertsCount = tokens.filter((token) => {
+    if (token.fundingAvailable === false) return false;
+    return (
+      token.marketCap < 50000000 &&
+      token.fundingRate < -0.0001 &&
+      token.volume24h / token.marketCap > 0.5 &&
+      token.floatRatio < 0.3
+    );
+  }).length;
+
+  const avgFundingRate = (() => {
+    const vals = tokens
+      .filter((t) => t.fundingAvailable !== false && Number.isFinite(t.fundingRate))
+      .map((t) => t.fundingRate);
+    if (!vals.length) return null;
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
+  })();
+
+  const formatPercent = (val: number) => `${(val * 100).toFixed(4)}%`;
+
   const fetchData = async () => {
     setIsRefreshing(true);
     try {
@@ -104,7 +124,7 @@ export default function Home() {
               <ShieldAlert className="w-6 h-6 text-error opacity-50 group-hover:opacity-100 transition-opacity" />
               <span className="text-[10px] font-bold text-gray-400 font-mono uppercase">{t.alertStatus}</span>
             </div>
-            <p className="text-3xl font-bold text-nearblack mb-1">2 {t.activeAlerts}</p>
+            <p className="text-3xl font-bold text-nearblack mb-1">{activeAlertsCount} {t.activeAlerts}</p>
             <p className="text-sm text-gray-500">{t.alertDesc}</p>
           </div>
           <div className="bg-white rounded-2xl p-6 border border-border shadow-sm hover:border-brand/30 transition-colors group">
@@ -120,7 +140,7 @@ export default function Home() {
               <BarChart3 className="w-6 h-6 text-softblue opacity-50 group-hover:opacity-100 transition-opacity" />
               <span className="text-[10px] font-bold text-gray-400 font-mono uppercase">{t.avgFunding}</span>
             </div>
-            <p className="text-3xl font-bold text-nearblack mb-1">-0.0124%</p>
+            <p className="text-3xl font-bold text-nearblack mb-1">{avgFundingRate === null ? '--' : formatPercent(avgFundingRate)}</p>
             <p className="text-sm text-gray-500">{t.fundingDesc}</p>
           </div>
         </div>
