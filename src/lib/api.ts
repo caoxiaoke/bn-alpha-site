@@ -62,15 +62,23 @@ const computeTop10Ratio = (item: any, totalSupply: number): number | undefined =
 
 const checkConcentration = (ratio?: number) => (typeof ratio === 'number' ? ratio > 0.6 : false);
 
-const huntNextRave = (tokens: Token[]) => {
+const huntNextRave = (
+  tokens: Token[],
+  options?: {
+    requirePerp?: boolean;
+    requireNegativeFunding?: boolean;
+  }
+) => {
+  const requirePerp = options?.requirePerp ?? true;
+  const requireNegativeFunding = options?.requireNegativeFunding ?? true;
   return tokens.filter((token) => {
     return (
       token.marketCap > 10000000 &&
       token.marketCap < 80000000 &&
-      token.isPerpAvailable === true &&
+      (requirePerp ? token.isPerpAvailable === true : true) &&
       token.floatRatio < 0.3 &&
       token.volume24h / token.marketCap > 0.5 &&
-      token.fundingRate < 0
+      (requireNegativeFunding ? token.fundingRate < 0 : true)
     );
   });
 };
@@ -112,10 +120,6 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
       fundingOk = true;
     } catch {
       fundingOk = false;
-    }
-
-    if (!fundingOk && !perpOk) {
-      throw new Error('PERP_CHECK_UNAVAILABLE');
     }
 
     const tokens = (alphaData as any[])
@@ -178,7 +182,15 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
         return true;
       });
 
-    return huntNextRave(tokens);
+    const strict = huntNextRave(tokens, {
+      requirePerp: fundingOk || perpOk,
+      requireNegativeFunding: fundingOk,
+    });
+
+    if (strict.length > 0) return strict;
+
+    const fallback = tokens.filter((t) => t.marketCap > 10000000 && t.marketCap < 80000000);
+    return fallback;
   } catch (error) {
     console.error('Error fetching real data through proxy:', error);
     return mockTokens.filter(t => t.marketCap > 10000000 && t.marketCap < 80000000 && t.isPerpAvailable);
