@@ -92,6 +92,10 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
     let perpOk = false;
     try {
       const exRes = await axios.get(`${PROXY_BASE}?target=fapiExchangeInfo`);
+      if (exRes.data?.code === 'RESTRICTED') {
+        perpSet = new Set();
+        perpOk = false;
+      } else {
       const symbols = exRes.data?.symbols ?? [];
       perpSet = new Set(
         symbols
@@ -104,6 +108,7 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
           .map((s: any) => String(s.symbol))
       );
       perpOk = true;
+      }
     } catch {
       perpSet = new Set();
       perpOk = false;
@@ -113,11 +118,16 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
     let fundingOk = false;
     try {
       const fundingRes = await axios.get(`${PROXY_BASE}?target=funding`);
-      const fundingData = fundingRes.data || [];
-      fundingMap = new Map<string, number>(
-        fundingData.map((f: any) => [String(f.symbol), parseFloat(String(f.lastFundingRate))])
-      );
-      fundingOk = true;
+      if (fundingRes.data?.code === 'RESTRICTED') {
+        fundingMap = new Map<string, number>();
+        fundingOk = false;
+      } else {
+        const fundingData = fundingRes.data || [];
+        fundingMap = new Map<string, number>(
+          fundingData.map((f: any) => [String(f.symbol), parseFloat(String(f.lastFundingRate))])
+        );
+        fundingOk = true;
+      }
     } catch {
       fundingOk = false;
     }

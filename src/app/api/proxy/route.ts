@@ -90,12 +90,23 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ...response.data, _sourceUrl: url });
   } catch (error: any) {
     const upstreamStatus = error?.response?.status ?? null;
-    if ((target === 'oi' || target === 'oiHist') && upstreamStatus === 451) {
+    if (
+      (target === 'oi' ||
+        target === 'oiHist' ||
+        target === 'fapiExchangeInfo' ||
+        target === 'funding') &&
+      upstreamStatus === 451
+    ) {
       return NextResponse.json(
         {
           code: 'RESTRICTED',
           message: 'UPSTREAM_RESTRICTED',
-          data: target === 'oi' ? null : [],
+          data:
+            target === 'oi'
+              ? null
+              : target === 'fapiExchangeInfo'
+                ? { symbols: [] }
+                : [],
           _sourceUrl: String(error?.config?.url ?? ''),
         },
         { status: 200 }
