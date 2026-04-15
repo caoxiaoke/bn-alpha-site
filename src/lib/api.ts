@@ -13,6 +13,24 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
     const alphaRes = await axios.get(`${PROXY_BASE}?target=alpha`);
     const alphaData = alphaRes.data?.data || [];
 
+    let perpSet = new Set<string>();
+    try {
+      const exRes = await axios.get(`${PROXY_BASE}?target=fapiExchangeInfo`);
+      const symbols = exRes.data?.symbols ?? [];
+      perpSet = new Set(
+        symbols
+          .filter(
+            (s: any) =>
+              String(s?.contractType ?? '') === 'PERPETUAL' &&
+              String(s?.quoteAsset ?? '') === 'USDT' &&
+              String(s?.status ?? '') === 'TRADING'
+          )
+          .map((s: any) => String(s.symbol))
+      );
+    } catch {
+      perpSet = new Set();
+    }
+
     let fundingMap = new Map<string, number>();
     let fundingOk = false;
     try {
@@ -32,7 +50,8 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
         const symbol = String(item?.symbol ?? '').trim();
         const futuresSymbol = `${symbol}USDT`.toUpperCase();
 
-        const isPerpAvailable = fundingOk ? fundingMap.has(futuresSymbol) : false;
+        const isPerpAvailable =
+          (fundingOk && fundingMap.has(futuresSymbol)) || (perpSet.size > 0 && perpSet.has(futuresSymbol));
         const fundingRate = fundingOk ? Number(fundingMap.get(futuresSymbol)) || 0 : 0;
 
         const price = parseNumber(item?.price);
@@ -67,8 +86,7 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
         if (!t.symbol) return false;
         if (!(t.marketCap > 0)) return false;
         if (!(t.marketCap > 10000000 && t.marketCap < 80000000)) return false;
-        if (fundingOk) return t.isPerpAvailable;
-        return true;
+        return t.isPerpAvailable;
       });
 
     return tokens;
