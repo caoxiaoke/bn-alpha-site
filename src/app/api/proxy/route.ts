@@ -185,7 +185,11 @@ export async function GET(request: NextRequest) {
                   item?.holdersTop10HoldPercent;
                 const n = Number.parseFloat(String(raw));
                 if (!Number.isFinite(n)) continue;
-                const ratio = n > 1 ? n / 100 : n;
+                let ratio = n > 1 ? n / 100 : n;
+                if (ratio > 0 && ratio < 0.001) {
+                  ratio = ratio * 10000;
+                }
+                ratio = Math.min(1, Math.max(0, ratio));
                 results[sym] = ratio;
                 top10Cache.set(sym, { value: ratio, ts: now });
                 missing.delete(sym);

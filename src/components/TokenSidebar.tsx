@@ -196,7 +196,7 @@ export const TokenSidebar: React.FC = () => {
               <span className="text-sm font-semibold text-gray-600">{t.holdingLevel}</span>
               <span className="text-lg font-bold font-mono">
                 {typeof selectedToken.top10HoldersRatio === 'number'
-                  ? `${((selectedToken.top10HoldersRatio * 100) < 0.1 ? (selectedToken.top10HoldersRatio * 100).toFixed(4) : (selectedToken.top10HoldersRatio * 100).toFixed(1))}%`
+                  ? `${(selectedToken.top10HoldersRatio * 100).toFixed(0)}%`
                   : '-'}
               </span>
             </div>
