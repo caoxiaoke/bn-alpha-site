@@ -193,7 +193,6 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
           chain: 'BSC',
         };
 
-        tokenData.degenScore = calculateDegenScore(tokenData);
         (tokenData as any)._hasContractAddress = hasContractAddress;
         (tokenData as any)._stockState = stockState;
         return tokenData;
@@ -210,6 +209,13 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
         if (stockState) return false;
         return true;
       });
+
+    const top10Map = await fetchTop10Ratios(tokens.map((t) => t.symbol));
+    for (const token of tokens) {
+      const ratio = top10Map[token.symbol.toUpperCase()];
+      if (typeof ratio === 'number') token.top10HoldersRatio = ratio;
+      token.degenScore = calculateDegenScore(token);
+    }
 
     const strict = huntNextRave(tokens, {
       requirePerp: fundingOk || perpOk,
@@ -247,6 +253,27 @@ export const fetchOIHistory = async (symbol: string): Promise<number[]> => {
   } catch (error) {
     console.error(`Error fetching OI history for ${symbol} via proxy:`, error);
     return [];
+  }
+};
+
+export const fetchTop10Ratios = async (symbols: string[]): Promise<Record<string, number>> => {
+  try {
+    const uniq = Array.from(
+      new Set(symbols.map((s) => String(s).trim().toUpperCase()).filter(Boolean))
+    ).slice(0, 25);
+    if (!uniq.length) return {};
+    const res = await axios.get(`${PROXY_BASE}?target=top10&symbols=${encodeURIComponent(uniq.join(','))}`);
+    const data = res.data?.data ?? {};
+    if (!data || typeof data !== 'object') return {};
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(data)) {
+      const n = typeof v === 'number' ? v : parseFloat(String(v));
+      if (!Number.isFinite(n)) continue;
+      out[String(k).toUpperCase()] = n;
+    }
+    return out;
+  } catch {
+    return {};
   }
 };
 

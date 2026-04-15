@@ -76,6 +76,7 @@ export const TokenTable: React.FC<TokenTableProps> = ({ tokens }) => {
           <tr className="border-b border-border bg-gray-50/50">
             <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-500 font-mono">{t.token}</th>
             <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-500 font-mono">{t.contract}</th>
+            <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-500 font-mono">{t.top10Ratio}</th>
             <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-500 font-mono">{t.price}</th>
             <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-500 font-mono">{t.mc}</th>
             <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-500 font-mono">{t.fdv}</th>
@@ -112,6 +113,9 @@ export const TokenTable: React.FC<TokenTableProps> = ({ tokens }) => {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-gray-500">
                   {hasContractAddress ? `${contractAddress.slice(0, 6)}...${contractAddress.slice(-4)}` : '-'}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-gray-500">
+                  {typeof token.top10HoldersRatio === 'number' ? `${(token.top10HoldersRatio * 100).toFixed(1)}%` : '-'}
                 </td>
                 <PriceCell price={token.price} />
                 <td className="px-6 py-4 whitespace-nowrap font-mono text-sm">
