@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Token } from '@/types';
 import { useTokenStore } from '@/store/useTokenStore';
-import { fetchOIHistory, fetchTokenOI } from '@/lib/api';
+import { fetchOIHistory, fetchTokenOI, fetchTop10HoldersByContract } from '@/lib/api';
 import { X, ExternalLink, Activity, BarChart3, Users, Copy, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLanguageStore, translations } from '@/store/useLanguageStore';
@@ -17,22 +17,41 @@ export const TokenSidebar: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [top10Detail, setTop10Detail] = useState<{
+    top10TotalRaw: string;
+    totalSupplyRaw?: string;
+    top10Ratio?: number;
+    holders: { address: string; balanceRaw: string }[];
+  } | null>(null);
 
   useEffect(() => {
     setMounted(true);
     if (selectedToken) {
       setLoading(true);
+      setTop10Detail(null);
       Promise.all([
         fetchTokenOI(selectedToken.symbol),
-        fetchOIHistory(selectedToken.symbol)
-      ]).then(([currentOi, history]) => {
+        fetchOIHistory(selectedToken.symbol),
+        selectedToken.contractAddress
+          ? fetchTop10HoldersByContract({ contractAddress: selectedToken.contractAddress, decimals: selectedToken.decimals })
+          : Promise.resolve({ code: 'UNAVAILABLE', sourceUrl: '' } as any)
+      ]).then(([currentOi, history, top10]) => {
         setOi(currentOi);
         setOiHistory(history);
+        if (top10?.code === '000000') {
+          setTop10Detail({
+            top10TotalRaw: top10.top10TotalRaw,
+            totalSupplyRaw: top10.totalSupplyRaw,
+            top10Ratio: top10.top10Ratio,
+            holders: top10.holders,
+          });
+        }
         setLoading(false);
       });
     } else {
       setOi(null);
       setOiHistory([]);
+      setTop10Detail(null);
     }
   }, [selectedToken]);
 
@@ -57,6 +76,13 @@ export const TokenSidebar: React.FC = () => {
     if (val >= 1000000) return `${(val / 1000000).toFixed(2)}M`;
     if (val >= 1000) return `${(val / 1000).toFixed(2)}K`;
     return val.toLocaleString();
+  };
+
+  const formatTop10Percent = (ratio?: number) => {
+    if (typeof ratio !== 'number') return '-';
+    const pct = ratio * 100;
+    if (pct > 0 && pct < 1) return '<1%';
+    return `${pct.toFixed(0)}%`;
   };
 
   const shortAddress = hasContractAddress
@@ -206,6 +232,37 @@ export const TokenSidebar: React.FC = () => {
                 style={{ width: `${typeof selectedToken.top10HoldersRatio === 'number' ? selectedToken.top10HoldersRatio * 100 : 0}%` }}
               ></div>
             </div>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="bg-white rounded-xl p-3 border border-border/50">
+                <p className="text-[10px] font-bold text-gray-400 font-mono uppercase">{t.top10Total}</p>
+                <p className="text-sm font-bold font-mono text-nearblack truncate">
+                  {top10Detail ? top10Detail.top10TotalRaw : '-'}
+                </p>
+              </div>
+              <div className="bg-white rounded-xl p-3 border border-border/50">
+                <p className="text-[10px] font-bold text-gray-400 font-mono uppercase">{t.top10Ratio}</p>
+                <p className="text-sm font-bold font-mono text-nearblack">
+                  {top10Detail ? formatTop10Percent(top10Detail.top10Ratio) : '-'}
+                </p>
+              </div>
+            </div>
+            {top10Detail?.holders?.length ? (
+              <div className="mt-4">
+                <p className="text-[10px] font-bold text-gray-400 font-mono uppercase mb-2">{t.top10Holders}</p>
+                <div className="space-y-2">
+                  {top10Detail.holders.slice(0, 10).map((h) => (
+                    <div key={h.address} className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-mono text-gray-600 truncate">
+                        {h.address.slice(0, 6)}...{h.address.slice(-4)}
+                      </span>
+                      <span className="text-xs font-mono text-gray-500 truncate">
+                        {h.balanceRaw}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <p className="mt-3 text-xs text-gray-400 font-mono italic">
               * {t.highControl}
             </p>

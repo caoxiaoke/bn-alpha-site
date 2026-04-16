@@ -17,6 +17,7 @@ export interface Token {
   chain?: string;
   circulatingSupply: number;
   totalSupply: number;
+  decimals?: number;
 }
 
 export interface BinanceAlphaToken {

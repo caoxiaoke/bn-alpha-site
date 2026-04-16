@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
   const target = searchParams.get('target');
   const symbol = searchParams.get('symbol');
   const symbols = searchParams.get('symbols');
+  const contractAddress = searchParams.get('contractAddress');
   const chainId = searchParams.get('chainId') ?? '56';
   const interval = searchParams.get('interval');
   const startTime = searchParams.get('startTime');
@@ -63,6 +64,7 @@ export async function GET(request: NextRequest) {
   ];
   const TOKEN_PULSE_RANK_URL =
     'https://web3.binance.com/bapi/defi/v1/public/wallet-direct/buw/wallet/market/token/pulse/rank/list/ai';
+  const BSCSCAN_API_URL = 'https://api.bscscan.com/api';
 
   try {
     let urls: string[] = [];
@@ -293,6 +295,90 @@ export async function GET(request: NextRequest) {
           data: results,
           _sourceUrl: TOKEN_PULSE_RANK_URL,
         });
+      }
+      case 'holdersTop10': {
+        if (!contractAddress) return NextResponse.json({ error: 'Missing contractAddress' }, { status: 400 });
+        const apiKey = process.env.BSCSCAN_API_KEY;
+        if (!apiKey) {
+          return NextResponse.json(
+            { code: 'UNAVAILABLE', message: 'BSCSCAN_API_KEY_MISSING', data: null, _sourceUrl: BSCSCAN_API_URL },
+            { status: 200 }
+          );
+        }
+
+        const ca = contractAddress.trim();
+        const holdersUrl =
+          `${BSCSCAN_API_URL}?module=token&action=tokenholderlist&contractaddress=${encodeURIComponent(ca)}` +
+          `&page=1&offset=10&apikey=${encodeURIComponent(apiKey)}`;
+        const supplyUrl =
+          `${BSCSCAN_API_URL}?module=stats&action=tokensupply&contractaddress=${encodeURIComponent(ca)}` +
+          `&apikey=${encodeURIComponent(apiKey)}`;
+        const sourceUrl =
+          `${BSCSCAN_API_URL}?module=token&action=tokenholderlist&contractaddress=${encodeURIComponent(ca)}` +
+          `&page=1&offset=10`;
+
+        const [holdersRes, supplyRes] = await Promise.all([
+          axios.get(holdersUrl, { timeout: 12000 }),
+          axios.get(supplyUrl, { timeout: 12000 }),
+        ]);
+
+        const holdersPayload = holdersRes.data;
+        const supplyPayload = supplyRes.data;
+
+        const status = String(holdersPayload?.status ?? '');
+        const msg = String(holdersPayload?.message ?? '').toLowerCase();
+        if (status !== '1' || msg.includes('pro') || msg.includes('invalid api key') || msg.includes('not') || msg.includes('limit')) {
+          return NextResponse.json(
+            { code: 'PRO_REQUIRED', message: holdersPayload?.message ?? 'PRO_REQUIRED', data: null, _sourceUrl: sourceUrl },
+            { status: 200 }
+          );
+        }
+
+        const list = Array.isArray(holdersPayload?.result) ? holdersPayload.result : [];
+        const holders = list
+          .map((h: any) => ({
+            address: String(h?.TokenHolderAddress ?? h?.address ?? h?.holderAddress ?? ''),
+            balanceRaw: String(h?.TokenHolderQuantity ?? h?.balance ?? h?.quantity ?? ''),
+          }))
+          .filter((h: any) => h.address && h.balanceRaw);
+
+        const toBigInt = (v: string) => {
+          try {
+            if (!/^\d+$/.test(v)) return null;
+            return BigInt(v);
+          } catch {
+            return null;
+          }
+        };
+
+        const top10Total = holders
+          .map((h: any) => toBigInt(h.balanceRaw))
+          .filter((x: any) => typeof x === 'bigint')
+          .reduce((acc: bigint, x: bigint) => acc + x, BigInt(0));
+
+        const supplyRaw = String(supplyPayload?.result ?? '');
+        const supplyBig = toBigInt(supplyRaw);
+        const top10Ratio = (() => {
+          if (!supplyBig || supplyBig <= BigInt(0)) return undefined;
+          const scaled = (top10Total * BigInt(1_000_000)) / supplyBig;
+          const n = Number(scaled) / 1_000_000;
+          return Number.isFinite(n) ? n : undefined;
+        })();
+
+        return NextResponse.json(
+          {
+            code: '000000',
+            message: null,
+            data: {
+              top10TotalRaw: top10Total.toString(),
+              totalSupplyRaw: supplyBig ? supplyBig.toString() : undefined,
+              top10Ratio: typeof top10Ratio === 'number' && Number.isFinite(top10Ratio) ? top10Ratio : undefined,
+              holders,
+            },
+            _sourceUrl: sourceUrl,
+          },
+          { status: 200 }
+        );
       }
       default:
         return NextResponse.json({ error: 'Invalid target' }, { status: 400 });

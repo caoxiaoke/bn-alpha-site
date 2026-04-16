@@ -164,6 +164,10 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
         const fdv = parseNumber(item?.fdv);
         const totalSupply = parseNumber(item?.totalSupply);
         const circulatingSupply = parseNumber(item?.circulatingSupply);
+        const decimals = (() => {
+          const n = Number(item?.decimals);
+          return Number.isFinite(n) ? n : undefined;
+        })();
         const contractAddress = String(item?.contractAddress ?? '').trim();
         const hasContractAddress = /^0x[a-fA-F0-9]{40}$/.test(contractAddress);
         const stockState = Boolean(item?.stockState);
@@ -186,6 +190,7 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
           top10HoldersRatio,
           contractAddress,
           chain: 'BSC',
+          decimals,
         };
 
         (tokenData as any)._hasContractAddress = hasContractAddress;
@@ -290,6 +295,51 @@ export const fetchTop10Ratios = async (symbols: string[]): Promise<Record<string
     return out;
   } catch {
     return {};
+  }
+};
+
+export const fetchTop10HoldersByContract = async (params: {
+  contractAddress: string;
+  decimals?: number;
+}): Promise<
+  | {
+      code: '000000';
+      top10TotalRaw: string;
+      totalSupplyRaw?: string;
+      top10Ratio?: number;
+      holders: { address: string; balanceRaw: string }[];
+      sourceUrl: string;
+    }
+  | { code: 'UNAVAILABLE' | 'RESTRICTED' | 'PRO_REQUIRED'; sourceUrl: string }
+> => {
+  try {
+    const contractAddress = params.contractAddress.trim();
+    const res = await axios.get(`${PROXY_BASE}?target=holdersTop10&contractAddress=${encodeURIComponent(contractAddress)}`);
+    const code = String(res.data?.code ?? '');
+    if (code !== '000000') {
+      return {
+        code: (code as any) || 'UNAVAILABLE',
+        sourceUrl: String(res.data?._sourceUrl ?? ''),
+      };
+    }
+    const data = res.data?.data ?? {};
+    return {
+      code: '000000',
+      top10TotalRaw: String(data?.top10TotalRaw ?? ''),
+      totalSupplyRaw: typeof data?.totalSupplyRaw === 'undefined' ? undefined : String(data.totalSupplyRaw),
+      top10Ratio: typeof data?.top10Ratio === 'number' ? data.top10Ratio : undefined,
+      holders: Array.isArray(data?.holders)
+        ? data.holders
+            .map((h: any) => ({
+              address: String(h?.address ?? ''),
+              balanceRaw: String(h?.balanceRaw ?? ''),
+            }))
+            .filter((h: any) => h.address && h.balanceRaw)
+        : [],
+      sourceUrl: String(res.data?._sourceUrl ?? ''),
+    };
+  } catch {
+    return { code: 'UNAVAILABLE', sourceUrl: '' };
   }
 };
 
