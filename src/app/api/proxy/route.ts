@@ -179,8 +179,30 @@ export async function GET(request: NextRequest) {
             item?.holdersTop10HoldPercent;
           const n = Number.parseFloat(String(raw));
           if (!Number.isFinite(n) || n <= 0) return undefined;
-          const ratio = n > 1 ? n / 100 : n;
-          return Math.min(1, Math.max(0, ratio));
+
+          const candidates: number[] = [];
+          if (n <= 1) {
+            candidates.push(n);
+            candidates.push(n / 100);
+            candidates.push(n / 10000);
+            candidates.push(n * 100);
+            candidates.push(n * 10000);
+          } else {
+            if (n <= 100) candidates.push(n / 100);
+            if (n <= 10000) candidates.push(n / 10000);
+          }
+
+          const normalized = candidates
+            .map((r) => Math.min(1, Math.max(0, r)))
+            .filter((r) => r > 0);
+          if (!normalized.length) return undefined;
+
+          const pickBest = (min: number) =>
+            normalized
+              .filter((r) => r >= min)
+              .sort((a, b) => b - a)[0];
+
+          return pickBest(0.05) ?? pickBest(0.01) ?? normalized.sort((a, b) => b - a)[0];
         };
 
         const now = Date.now();

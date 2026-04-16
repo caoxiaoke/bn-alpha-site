@@ -72,6 +72,7 @@ export const TokenTable: React.FC<TokenTableProps> = ({ tokens }) => {
   const formatTop10 = (ratio?: number) => {
     if (typeof ratio !== 'number') return '-';
     const pct = ratio * 100;
+    if (pct > 0 && pct < 1) return '<1%';
     return `${pct.toFixed(0)}%`;
   };
 
