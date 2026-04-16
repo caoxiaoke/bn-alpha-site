@@ -170,47 +170,17 @@ export async function GET(request: NextRequest) {
         const results: Record<string, number> = {};
         const rankTypes = [10, 20, 30];
 
-        const toNumber = (v: unknown) => {
-          const n = Number.parseFloat(String(v));
-          return Number.isFinite(n) ? n : null;
-        };
-
         const pickTop10Ratio = (item: any) => {
-          const rawValues = [
-            item?.holdersTop10Percent,
-            item?.holdersTop10Percentage,
-            item?.holdersTop10,
-            item?.holdersTop10Ratio,
-            item?.holdersTop10HoldPercent,
-          ];
-
-          const candidates: number[] = [];
-          for (const raw of rawValues) {
-            const n = toNumber(raw);
-            if (n === null || n <= 0) continue;
-            if (n <= 1) {
-              candidates.push(n);
-              candidates.push(n / 100);
-            } else if (n <= 100) {
-              candidates.push(n / 100);
-            } else if (n <= 10000) {
-              candidates.push(n / 10000);
-            }
-            if (n <= 0.001) {
-              candidates.push(n * 10000);
-            }
-          }
-
-          let best: { ratio: number; score: number } | null = null;
-          for (const r0 of candidates) {
-            const r = Math.min(1, Math.max(0, r0));
-            if (!(r > 0)) continue;
-            const score = r >= 0.05 ? 3 : r >= 0.01 ? 2 : r >= 0.001 ? 1 : 0;
-            if (!best || score > best.score || (score === best.score && r > best.ratio)) {
-              best = { ratio: r, score };
-            }
-          }
-          return best?.ratio;
+          const raw =
+            item?.holdersTop10Percent ??
+            item?.holdersTop10Percentage ??
+            item?.holdersTop10 ??
+            item?.holdersTop10Ratio ??
+            item?.holdersTop10HoldPercent;
+          const n = Number.parseFloat(String(raw));
+          if (!Number.isFinite(n) || n <= 0) return undefined;
+          const ratio = n > 1 ? n / 100 : n;
+          return Math.min(1, Math.max(0, ratio));
         };
 
         const now = Date.now();

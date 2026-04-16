@@ -14,21 +14,6 @@ type HolderLike = {
   quantity?: number | string;
 };
 
-const EXCLUDED_HOLDER_ADDRESSES = new Set([
-  '0x0000000000000000000000000000000000000000',
-  '0x000000000000000000000000000000000000dead',
-]);
-
-const isExcludedHolder = (holder: HolderLike) => {
-  const addr = String(
-    holder.address ?? holder.walletAddress ?? holder.ownerAddress ?? ''
-  ).toLowerCase();
-  const label = String(holder.label ?? holder.tag ?? '').toLowerCase();
-  if (EXCLUDED_HOLDER_ADDRESSES.has(addr)) return true;
-  if (label.includes('binance') || label.includes('exchange') || label.includes('cex')) return true;
-  return false;
-};
-
 const parseNumber = (val: unknown) => {
   const n = typeof val === 'number' ? val : parseFloat(String(val));
   return Number.isFinite(n) ? n : 0;
@@ -38,7 +23,6 @@ const computeTop10Ratio = (item: any, totalSupply: number): number | undefined =
   const holderArrays = [item?.holders, item?.holderList, item?.topHolders].filter(Array.isArray);
   for (const arr of holderArrays) {
     const holders = (arr as HolderLike[])
-      .filter((h) => !isExcludedHolder(h))
       .map((h) => parseNumber(h.balance ?? h.amount ?? h.quantity))
       .filter((v) => v > 0)
       .sort((a, b) => b - a);
