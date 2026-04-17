@@ -44,6 +44,8 @@ export async function GET(request: NextRequest) {
   const symbol = searchParams.get('symbol');
   const symbols = searchParams.get('symbols');
   const contractAddress = searchParams.get('contractAddress');
+  const instId = searchParams.get('instId');
+  const instIds = searchParams.get('instIds');
   const chainId = searchParams.get('chainId') ?? '56';
   const interval = searchParams.get('interval');
   const startTime = searchParams.get('startTime');
@@ -65,6 +67,10 @@ export async function GET(request: NextRequest) {
   const TOKEN_PULSE_RANK_URL =
     'https://web3.binance.com/bapi/defi/v1/public/wallet-direct/buw/wallet/market/token/pulse/rank/list/ai';
   const BSCSCAN_API_URL = 'https://api.bscscan.com/api';
+  const OKX_TICKERS_URL = 'https://www.okx.com/api/v5/market/tickers?instType=SWAP';
+  const OKX_INSTRUMENTS_URL = 'https://www.okx.com/api/v5/public/instruments?instType=SWAP';
+  const OKX_FUNDING_URL = 'https://www.okx.com/api/v5/public/funding-rate';
+  const OKX_OI_URL = 'https://www.okx.com/api/v5/public/open-interest';
 
   try {
     let urls: string[] = [];
@@ -379,6 +385,92 @@ export async function GET(request: NextRequest) {
           },
           { status: 200 }
         );
+      }
+      case 'okxTickers': {
+        urls = [OKX_TICKERS_URL];
+        ttlMs = 10_000;
+        break;
+      }
+      case 'okxInstruments': {
+        urls = [OKX_INSTRUMENTS_URL];
+        ttlMs = 10 * 60_000;
+        break;
+      }
+      case 'okxFunding': {
+        if (!instId) return NextResponse.json({ error: 'Missing instId' }, { status: 400 });
+        urls = [`${OKX_FUNDING_URL}?instId=${encodeURIComponent(instId)}`];
+        ttlMs = 10_000;
+        break;
+      }
+      case 'okxOpenInterest': {
+        if (!instId) return NextResponse.json({ error: 'Missing instId' }, { status: 400 });
+        urls = [`${OKX_OI_URL}?instType=SWAP&instId=${encodeURIComponent(instId)}`];
+        ttlMs = 10_000;
+        break;
+      }
+      case 'okxFundingBatch': {
+        if (!instIds) return NextResponse.json({ error: 'Missing instIds' }, { status: 400 });
+        const ids = instIds
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .slice(0, 25);
+        const out: Record<string, number> = {};
+        await Promise.all(
+          ids.map(async (id) => {
+            const url = `${OKX_FUNDING_URL}?instId=${encodeURIComponent(id)}`;
+            try {
+              const { response } = await fetchWithFallback([url], 10_000);
+              const data = response.data;
+              const arr = Array.isArray(data?.data) ? data.data : [];
+              const first = arr[0];
+              const rate = Number.parseFloat(String(first?.fundingRate));
+              if (Number.isFinite(rate)) out[id] = rate;
+            } catch {
+              return;
+            }
+          })
+        );
+        return NextResponse.json({
+          code: '000000',
+          message: null,
+          data: out,
+          _sourceUrl: OKX_FUNDING_URL,
+        });
+      }
+      case 'okxOpenInterestBatch': {
+        if (!instIds) return NextResponse.json({ error: 'Missing instIds' }, { status: 400 });
+        const ids = instIds
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .slice(0, 25);
+        const out: Record<string, { oiCcy?: number; oi?: number }> = {};
+        await Promise.all(
+          ids.map(async (id) => {
+            const url = `${OKX_OI_URL}?instType=SWAP&instId=${encodeURIComponent(id)}`;
+            try {
+              const { response } = await fetchWithFallback([url], 10_000);
+              const data = response.data;
+              const arr = Array.isArray(data?.data) ? data.data : [];
+              const first = arr[0];
+              const oiCcy = Number.parseFloat(String(first?.oiCcy));
+              const oi = Number.parseFloat(String(first?.oi));
+              const v: any = {};
+              if (Number.isFinite(oiCcy)) v.oiCcy = oiCcy;
+              if (Number.isFinite(oi)) v.oi = oi;
+              if (Object.keys(v).length) out[id] = v;
+            } catch {
+              return;
+            }
+          })
+        );
+        return NextResponse.json({
+          code: '000000',
+          message: null,
+          data: out,
+          _sourceUrl: OKX_OI_URL,
+        });
       }
       default:
         return NextResponse.json({ error: 'Invalid target' }, { status: 400 });

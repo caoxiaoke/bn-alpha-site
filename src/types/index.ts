@@ -6,6 +6,10 @@ export interface Token {
   volume24h: number;
   fundingRate: number;
   fundingAvailable?: boolean;
+  okxPerpAvailable?: boolean;
+  okxFundingRate?: number;
+  okxFundingAvailable?: boolean;
+  okxOiCcy?: number;
   floatRatio: number; // circulatingSupply / totalSupply
   alphaRankChange: number;
   isPerpAvailable: boolean;

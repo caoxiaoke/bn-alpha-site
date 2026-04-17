@@ -59,12 +59,42 @@ const huntNextRave = (
     return (
       token.marketCap > 10000000 &&
       token.marketCap < 80000000 &&
-      (requirePerp ? token.isPerpAvailable === true : true) &&
+      (requirePerp ? token.isPerpAvailable === true || token.okxPerpAvailable === true : true) &&
       token.floatRatio < 0.3 &&
       token.volume24h / token.marketCap > 0.5 &&
       (requireNegativeFunding ? token.fundingAvailable !== false && token.fundingRate < 0 : true)
     );
   });
+};
+
+const fetchOkxSwapTickers = async () => {
+  const res = await axios.get(`${PROXY_BASE}?target=okxTickers`);
+  const payload = res.data;
+  const arr = Array.isArray(payload?.data) ? payload.data : [];
+  const out = new Set<string>();
+  for (const t of arr) {
+    const instId = String(t?.instId ?? '').trim();
+    if (!instId) continue;
+    if (!instId.endsWith('-USDT-SWAP')) continue;
+    out.add(instId);
+  }
+  return out;
+};
+
+const fetchOkxFundingBatch = async (instIds: string[]) => {
+  const uniq = Array.from(new Set(instIds.map((s) => s.trim()).filter(Boolean))).slice(0, 25);
+  if (!uniq.length) return {};
+  const res = await axios.get(`${PROXY_BASE}?target=okxFundingBatch&instIds=${encodeURIComponent(uniq.join(','))}`);
+  const data = res.data?.data ?? {};
+  return data && typeof data === 'object' ? (data as Record<string, number>) : {};
+};
+
+const fetchOkxOpenInterestBatch = async (instIds: string[]) => {
+  const uniq = Array.from(new Set(instIds.map((s) => s.trim()).filter(Boolean))).slice(0, 25);
+  if (!uniq.length) return {};
+  const res = await axios.get(`${PROXY_BASE}?target=okxOpenInterestBatch&instIds=${encodeURIComponent(uniq.join(','))}`);
+  const data = res.data?.data ?? {};
+  return data && typeof data === 'object' ? (data as Record<string, { oiCcy?: number; oi?: number }>) : {};
 };
 
 export const fetchAlphaTokens = async (): Promise<Token[]> => {
@@ -181,6 +211,8 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
           volume24h,
           fundingRate,
           fundingAvailable: hasFunding,
+          okxPerpAvailable: false,
+          okxFundingAvailable: false,
           circulatingSupply,
           totalSupply,
           floatRatio: totalSupply > 0 ? circulatingSupply / totalSupply : 0,
@@ -210,12 +242,41 @@ export const fetchAlphaTokens = async (): Promise<Token[]> => {
         return true;
       });
 
-    const top10Map = await fetchTop10Ratios(tokens.map((t) => t.symbol));
+    const [top10Map, okxSwapSet] = await Promise.all([
+      fetchTop10Ratios(tokens.map((t) => t.symbol)),
+      fetchOkxSwapTickers().catch(() => new Set<string>()),
+    ]);
+
+    for (const token of tokens) {
+      const instId = `${token.symbol.toUpperCase()}-USDT-SWAP`;
+      token.okxPerpAvailable = okxSwapSet.has(instId);
+    }
+
+    const okxCandidates = tokens
+      .filter((t) => t.marketCap > 10000000 && t.marketCap < 80000000 && t.okxPerpAvailable)
+      .slice(0, 25);
+    const okxInstIds = okxCandidates.map((t) => `${t.symbol.toUpperCase()}-USDT-SWAP`);
+    const [okxFundingMap, okxOiMap] = await Promise.all([
+      fetchOkxFundingBatch(okxInstIds).catch(() => ({} as Record<string, number>)),
+      fetchOkxOpenInterestBatch(okxInstIds).catch(
+        () => ({} as Record<string, { oiCcy?: number; oi?: number }>)
+      ),
+    ]);
     for (const token of tokens) {
       const ratio = top10Map[token.symbol.toUpperCase()];
       if (typeof ratio === 'number') token.top10HoldersRatio = ratio;
+      const instId = `${token.symbol.toUpperCase()}-USDT-SWAP`;
+      const okxFunding = okxFundingMap[instId];
+      if (typeof okxFunding === 'number' && Number.isFinite(okxFunding)) {
+        token.okxFundingRate = okxFunding;
+        token.okxFundingAvailable = true;
+      }
+      const oi = okxOiMap[instId];
+      const oiCcy = typeof oi?.oiCcy === 'number' ? oi.oiCcy : undefined;
+      if (typeof oiCcy === 'number' && Number.isFinite(oiCcy)) token.okxOiCcy = oiCcy;
       token.degenScore = calculateDegenScore(token);
     }
+
 
     const strict = huntNextRave(tokens, {
       requirePerp: fundingOk || perpOk,
@@ -357,6 +418,8 @@ export const calculateDegenScore = (token: Partial<Token>) => {
   const floatRatio = Number(token.floatRatio) || 0;
   const fundingRate = Number(token.fundingRate) || 0;
   const fundingAvailable = token.fundingAvailable !== false;
+  const okxFundingAvailable = token.okxFundingAvailable === true && Number.isFinite(Number(token.okxFundingRate));
+  const okxFundingRate = Number(token.okxFundingRate) || 0;
   const top10 = typeof token.top10HoldersRatio === 'number' ? token.top10HoldersRatio : undefined;
 
   const vmc = marketCap > 0 ? volume24h / marketCap : 0;
@@ -369,9 +432,20 @@ export const calculateDegenScore = (token: Partial<Token>) => {
   })();
 
   const scoreFunding = (() => {
-    if (!fundingAvailable) return 8;
-    if (!(fundingRate < 0)) return 0;
-    return clamp(lerpScore(fundingRate, -0.0005, -0.00005, 25, 0), 0, 25);
+    const effectiveAvailable = fundingAvailable || okxFundingAvailable;
+    const effectiveRate = fundingAvailable ? fundingRate : okxFundingRate;
+    if (!effectiveAvailable) return 8;
+    if (!(effectiveRate < 0)) return 0;
+    return clamp(lerpScore(effectiveRate, -0.0005, -0.00005, 25, 0), 0, 25);
+  })();
+
+  const scoreOi = (() => {
+    const oiCcy = typeof token.okxOiCcy === 'number' ? token.okxOiCcy : undefined;
+    const price = Number(token.price) || 0;
+    if (!(oiCcy && oiCcy > 0 && price > 0 && marketCap > 0)) return 0;
+    const oiUsd = oiCcy * price;
+    const ratio = oiUsd / marketCap;
+    return clamp(lerpScore(ratio, 0.05, 0.5, 0, 10), 0, 10);
   })();
 
   const scoreTop10 = (() => {
@@ -389,7 +463,7 @@ export const calculateDegenScore = (token: Partial<Token>) => {
 
   const scorePerp = token.isPerpAvailable ? 5 : 0;
 
-  const raw = scoreVmc + scoreFloat + scoreFunding + scoreTop10 + scoreMarketCap + scorePerp;
+  const raw = scoreVmc + scoreFloat + scoreFunding + scoreTop10 + scoreMarketCap + scorePerp + scoreOi;
   return Math.round(clamp(raw, 0, 100));
 };
 
