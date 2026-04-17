@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Token } from '@/types';
 import { useTokenStore } from '@/store/useTokenStore';
 import { fetchOIHistory, fetchTokenOI, fetchTop10HoldersByContract } from '@/lib/api';
 import { X, ExternalLink, Activity, BarChart3, Users, Copy, Check } from 'lucide-react';

@@ -44,8 +44,6 @@ const computeTop10Ratio = (item: any, totalSupply: number): number | undefined =
   return undefined;
 };
 
-const checkConcentration = (ratio?: number) => (typeof ratio === 'number' ? ratio > 0.6 : false);
-
 const huntNextRave = (
   tokens: Token[],
   options?: {
